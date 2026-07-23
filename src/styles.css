@@ -1,0 +1,1283 @@
+/* ================================================
+   Design-tokens hentet fra referansedesignet (ZeBeyond)
+   Farger er sample­t direkte fra bildet, ikke anslått.
+   ================================================ */
+:root {
+  --bg: #030504;
+  --glow-core: #12503c;
+  --glow-mid: #0a2a1f;
+
+  --panel-bg: rgba(9, 18, 14, 0.72);
+  --panel-border: rgba(255, 255, 255, 0.08);
+  --grid-line: rgba(255, 255, 255, 0.035);
+
+  --text-primary: #ffffff;
+  --text-muted: #9aa8a2;
+  --text-faint: rgba(255, 255, 255, 0.45);
+
+  --accent-cyan: #6efdff;
+  --accent-mint: #40ffc0;
+  --accent-mint-solid: #38e6ac;
+  --btn-text-dark: #04120c;
+
+  --danger: #ff7a6e;
+
+  --radius-lg: 22px;
+  --radius-md: 14px;
+  --radius-pill: 999px;
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, "Helvetica Neue", Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  position: relative;
+  -webkit-font-smoothing: antialiased;
+}
+
+#locked-view {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-mint);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ---------- Bakgrunn: rutenett + grønt glød ---------- */
+.bg-grid {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 80% 65% at 50% 38%, black 40%, transparent 85%);
+  z-index: 0;
+}
+
+.bg-glow {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 55% 45% at 50% 36%, var(--glow-core) 0%, var(--glow-mid) 42%, transparent 72%);
+  z-index: 0;
+  animation: breathe 9s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
+/* ---------- HUD: liten "boks i hjørnet" ---------- */
+#hud-view {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.hud-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  background: #0a1410;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-pill);
+  padding: 0 20px;
+  box-shadow: 0 8px 28px -6px rgba(0, 0, 0, 0.75);
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.hud-pill:active {
+  cursor: grabbing;
+}
+
+body.mode-hud.hud-urgent .hud-pill {
+  border-color: rgba(255, 122, 110, 0.55);
+}
+
+body.mode-hud.hud-urgent .hud-dot {
+  background: var(--danger);
+  box-shadow: 0 0 8px 1px var(--danger);
+}
+
+body.mode-hud.hud-urgent .hud-time {
+  color: #ffb4ac;
+}
+
+.hud-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-mint);
+  box-shadow: 0 0 8px 1px var(--accent-mint);
+  flex-shrink: 0;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.hud-time {
+  font-weight: 700;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.hud-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Tauri: vinduet ER pillen — ingen ekstra luft */
+body.mode-hud {
+  background: transparent !important;
+  overflow: hidden;
+}
+
+body.mode-hud #locked-view {
+  display: none !important;
+}
+
+body.mode-hud #hud-view {
+  background: transparent;
+  display: flex !important;
+}
+
+body.mode-hud .hud-pill {
+  border-radius: 16px;
+  width: 100%;
+  height: 100%;
+}
+
+/* Nettleser-forhåndsvisning: unngå nettleserens verktøylinje øverst */
+body.preview #hud-view {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  top: auto;
+  left: auto;
+  width: 268px;
+  height: 56px;
+  padding: 0;
+  z-index: 99999;
+}
+
+body.preview.mode-hud #locked-view {
+  display: none !important;
+}
+
+/* ---------- Toppchrome: enhet / status, ekko av "Project / Industry" ---------- */
+.chrome {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  padding: 28px 36px 0;
+}
+
+.chrome-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chrome-item--right {
+  align-items: flex-end;
+}
+
+.chrome-label {
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-weight: 600;
+}
+
+.chrome-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chrome-value--locked {
+  color: #d7ffe9;
+}
+
+.chrome-right-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.icon-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.icon-btn:hover {
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-mint);
+  box-shadow: 0 0 8px 1px var(--accent-mint);
+  flex-shrink: 0;
+}
+
+/* ---------- Sentral scene ---------- */
+.stage {
+  position: relative;
+  z-index: 2;
+  height: calc(100% - 84px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.card {
+  width: 100%;
+  max-width: 460px;
+  max-height: 100%;
+  overflow-y: auto;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-lg);
+  padding: 40px 38px 34px;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.6);
+  text-align: left;
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.icon-badge {
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  background: linear-gradient(160deg, rgba(64, 255, 192, 0.18), rgba(110, 253, 255, 0.06));
+  border: 1px solid rgba(64, 255, 192, 0.35);
+  color: var(--accent-mint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.icon-badge svg {
+  width: 22px;
+  height: 22px;
+}
+
+.icon-badge--success {
+  border-color: rgba(64, 255, 192, 0.5);
+  background: linear-gradient(160deg, rgba(64, 255, 192, 0.28), rgba(110, 253, 255, 0.08));
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-mint-solid);
+}
+
+h1 {
+  margin: 0 0 14px;
+  font-size: 30px;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.body-text {
+  margin: 0 0 30px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.body-text strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+/* ---------- Knapper ---------- */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.btn {
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 13px 22px;
+  border-radius: var(--radius-pill);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn-primary {
+  background: linear-gradient(100deg, var(--accent-cyan), var(--accent-mint));
+  color: var(--btn-text-dark);
+  box-shadow: 0 8px 26px -6px rgba(64, 255, 192, 0.55);
+}
+
+.btn-primary:hover {
+  box-shadow: 0 10px 32px -6px rgba(64, 255, 192, 0.75);
+}
+
+.btn-outline {
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.btn-outline:hover {
+  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.btn-sm {
+  padding: 12px 18px;
+  white-space: nowrap;
+}
+
+.switch-wrap {
+  position: relative;
+}
+
+.switch-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 190px;
+  background: #0a1410;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  padding: 6px;
+  box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.7);
+  z-index: 3;
+}
+
+.switch-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.switch-option:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.switch-option--danger:hover {
+  background: rgba(255, 122, 110, 0.12);
+  color: var(--danger);
+}
+
+.link-btn {
+  margin-top: 14px;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.link-btn:hover {
+  color: var(--text-muted);
+}
+
+/* ---------- PIN-panel ---------- */
+.pin-label {
+  margin: 0 0 14px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.pin-row {
+  display: flex;
+  gap: 10px;
+}
+
+.pin-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-pill);
+  padding: 12px 18px;
+  font-family: inherit;
+  font-size: 15px;
+  letter-spacing: 0.2em;
+  color: var(--text-primary);
+}
+
+.pin-input::placeholder {
+  color: var(--text-faint);
+  letter-spacing: normal;
+}
+
+.pin-input:focus {
+  border-color: var(--accent-mint-solid);
+  outline: none;
+}
+
+.pin-error {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.shake {
+  animation: shake 0.4s;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+/* ---------- Innvilget-panel ---------- */
+.granted-panel .body-text {
+  margin-bottom: 0;
+}
+
+/* ---------- Minispill: 3D bilspill ---------- */
+.card.game-active {
+  max-width: min(960px, 96vw);
+}
+
+/* Gi spillet plass: skjul ikon og brødtekst mens det kjøres */
+.card.game-active #icon-badge,
+.card.game-active #card-body {
+  display: none;
+}
+
+.card.game-active h1 {
+  margin-bottom: 20px;
+}
+
+.game-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.game-head .pin-label {
+  margin: 0;
+}
+
+.game-earned {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.game-earned strong {
+  color: var(--accent-mint-solid);
+  font-variant-numeric: tabular-nums;
+}
+
+.car-game-wrap {
+  position: relative;
+  height: min(400px, 52vh);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--panel-border);
+  margin-bottom: 12px;
+  background: #030504;
+}
+
+.car-hud-fs-btn {
+  pointer-events: auto;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(9, 18, 14, 0.75);
+  color: #fff;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.car-hud-fs-btn:hover {
+  border-color: var(--accent-mint-solid);
+  color: var(--accent-mint);
+}
+
+/* ---------- Spill i fullskjerm ---------- */
+body.game-immersive .chrome,
+body.game-immersive #icon-badge,
+body.game-immersive #card-body,
+body.game-immersive .card > h1,
+body.game-immersive .game-head,
+body.game-immersive .game-budget,
+body.game-immersive #game-error {
+  display: none !important;
+}
+
+body.game-immersive .stage,
+body.game-immersive .card,
+body.game-immersive .card.game-active {
+  max-width: none;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+body.game-immersive .game-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body.game-immersive .car-game-wrap {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  z-index: 40;
+}
+
+body.game-immersive .game-actions {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 50;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(9, 18, 14, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+body.game-immersive .car-hud-fs-btn {
+  color: var(--accent-mint);
+  border-color: rgba(64, 255, 192, 0.45);
+}
+
+body.game-immersive .car-hud-math {
+  top: 28px;
+}
+
+body.game-immersive .car-hud-question {
+  font-size: clamp(36px, 5.5vw, 64px);
+  padding: 14px 36px;
+  border-radius: 12px;
+  letter-spacing: 0.06em;
+  border-width: 2px;
+}
+
+body.game-immersive .car-hud-hint {
+  font-size: 15px;
+  bottom: 78px;
+}
+
+#car-game-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.car-game-over {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  background: rgba(3, 5, 4, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  text-align: center;
+  z-index: 4;
+}
+
+.car-game-over[hidden] {
+  display: none !important;
+}
+
+.car-game-over-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.car-game-over-desc {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.75);
+  max-width: 28ch;
+}
+
+.car-game-hud {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 12px 14px;
+  pointer-events: none;
+}
+
+.car-hud-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.car-hud-stat {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(9, 18, 14, 0.7);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-pill);
+  padding: 6px 13px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.car-hud-stat strong {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.car-hud-stat--hot {
+  color: var(--accent-mint-solid);
+  border-color: rgba(64, 255, 192, 0.45);
+  box-shadow: 0 0 16px -2px rgba(64, 255, 192, 0.35);
+}
+
+.car-hud-stat--hot strong {
+  color: var(--accent-mint);
+}
+
+.car-hud-hint {
+  align-self: center;
+  font-size: 12px;
+  color: var(--text-faint);
+  background: rgba(9, 18, 14, 0.6);
+  border-radius: var(--radius-pill);
+  padding: 5px 12px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.game-budget {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+.game-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ---------- Innstillinger ---------- */
+.card.settings-active {
+  max-width: min(720px, 96vw);
+  width: 100%;
+  max-height: min(88vh, 900px);
+  padding: 36px 40px 32px;
+  overflow-y: auto;
+}
+
+.card.settings-active #icon-badge,
+.card.settings-active #card-body,
+.card.settings-active #card-eyebrow,
+.card.settings-active #card-title {
+  display: none;
+}
+
+.card.settings-active .pin-label {
+  font-size: 15px;
+  margin-bottom: 16px;
+  line-height: 1.45;
+}
+
+.card.settings-active .field-label {
+  font-size: 14px;
+  margin: 16px 0 8px;
+}
+
+.card.settings-active .text-input,
+.card.settings-active .pin-input {
+  font-size: 16px;
+  padding: 14px 16px;
+}
+
+.card.settings-active .pin-row {
+  gap: 12px;
+}
+
+.card.settings-active .btn-sm {
+  padding: 14px 22px;
+  font-size: 15px;
+}
+
+.settings-title {
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.settings-hint {
+  margin: 0 0 18px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+.settings-section {
+  margin: 22px 0 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--panel-border);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-mint-solid);
+}
+
+.settings-section:first-of-type {
+  margin-top: 8px;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 10px 0 6px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 14.5px;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.toggle-row input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--accent-mint-solid);
+}
+
+.settings-ok {
+  margin: 12px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-mint-solid);
+}
+
+.field-label {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 14px 0 6px;
+}
+
+.field-label:first-of-type {
+  margin-top: 0;
+}
+
+.text-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-md);
+  padding: 11px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.text-input:focus {
+  border-color: var(--accent-mint-solid);
+  outline: none;
+}
+
+.settings-panel .game-actions,
+.settings-gate .game-actions {
+  margin-top: 24px;
+}
+
+/* ---------- Merkevare, ekko av "ZeBeyond"-logoen ---------- */
+.brandmark {
+  margin-top: 22px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-faint);
+  letter-spacing: 0.01em;
+}
+
+.brand-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-mint);
+}
+
+/* ---------- Responsiv ---------- */
+@media (max-width: 520px) {
+  .chrome {
+    padding: 20px 20px 0;
+  }
+  .card {
+    padding: 30px 24px 26px;
+  }
+  h1 {
+    font-size: 25px;
+  }
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .btn {
+    text-align: center;
+  }
+  .car-game-wrap {
+    height: 280px;
+  }
+}
+
+/* ---------- Oppgave: lite spørsmål øverst (svar = sirkler på veien) ---------- */
+.car-hud-math {
+  position: absolute;
+  left: 50%;
+  top: 44px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.car-hud-question {
+  position: static;
+  transform: none;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: rgba(40, 20, 60, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  padding: 6px 18px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.car-hud-question[hidden] {
+  display: none !important;
+}
+
+/* Svarene står på veien — ikke ekstra gule brikker i veien */
+.car-hud-answers {
+  display: none !important;
+}
+
+/* ---------- Garasje (bilbutikk) ---------- */
+.card.shop-active {
+  max-width: min(720px, 96vw);
+}
+
+.card.shop-active #icon-badge,
+.card.shop-active #card-body {
+  display: none;
+}
+
+.card.shop-active h1 {
+  margin-bottom: 12px;
+}
+
+.garage-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.garage-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.garage-back {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.garage-back:hover {
+  border-color: var(--accent-mint-solid);
+  color: var(--accent-mint);
+}
+
+.garage-title {
+  margin: 0;
+  flex: 1;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: #fff;
+}
+
+.garage-coins {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.garage-coins strong {
+  color: #ffc94a;
+  font-size: 18px;
+}
+
+.garage-bay {
+  position: relative;
+  border-radius: 16px;
+  padding: 18px 16px 10px;
+  background:
+    linear-gradient(180deg, rgba(40, 48, 46, 0.5) 0%, rgba(12, 16, 14, 0.9) 55%, rgba(8, 10, 9, 0.95) 100%),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 18px,
+      rgba(255, 255, 255, 0.03) 18px 19px
+    );
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  text-align: center;
+}
+
+.garage-bay::before {
+  content: "";
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: 22px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4);
+  filter: blur(6px);
+  pointer-events: none;
+}
+
+.garage-car-svg {
+  width: min(280px, 70%);
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45));
+}
+
+.garage-car-label {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.garage-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.garage-tab {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 10px 8px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.garage-tab.is-active {
+  background: linear-gradient(180deg, #2a3a34, #1a2822);
+  color: var(--accent-mint);
+  box-shadow: inset 0 0 0 1px rgba(64, 255, 192, 0.25);
+}
+
+.garage-shelf {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(280px, 36vh);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.garage-item {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.garage-item.is-selected {
+  border-color: rgba(64, 255, 192, 0.45);
+  background: rgba(56, 230, 172, 0.08);
+}
+
+.garage-item-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  font-weight: 900;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--accent-mint);
+}
+
+.garage-item-icon.paint-swatch {
+  border-radius: 50%;
+  border-width: 3px;
+  border-color: rgba(255, 255, 255, 0.35);
+  font-size: 0;
+}
+
+.garage-item-text {
+  min-width: 0;
+}
+
+.garage-item-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.garage-item-desc {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-faint);
+}
+
+.garage-item .btn {
+  white-space: nowrap;
+}
+
+.garage-item .btn[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.garage-paints {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.garage-paint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: default;
+}
+
+.garage-paint.is-selected {
+  border-color: rgba(64, 255, 192, 0.5);
+  box-shadow: 0 0 0 1px rgba(64, 255, 192, 0.2);
+}
+
+.garage-paint-swatch {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  box-shadow: inset 0 -6px 10px rgba(0, 0, 0, 0.25);
+}
+
+.garage-paint-name {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.garage-maps {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.garage-map {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  min-height: 110px;
+}
+
+.garage-map.is-selected {
+  border-color: rgba(64, 255, 192, 0.45);
+}
+
+.garage-map-preview {
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}

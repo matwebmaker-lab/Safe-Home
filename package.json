@@ -1,0 +1,15 @@
+{
+  "name": "skjermtid",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "tauri": "tauri",
+    "preview": "npx --yes serve src -p 3456"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  },
+  "dependencies": {
+    "three": "^0.172.0"
+  }
+}

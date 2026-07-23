@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Skjermtid</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- =================== HUD: liten boks i hjørnet =================== -->
+  <div id="hud-view" hidden>
+    <div class="hud-pill" id="hud-pill" title="Dra for å flytte">
+      <span class="hud-dot" aria-hidden="true"></span>
+      <span class="hud-time" id="hud-time">00:00</span>
+      <span class="hud-label">igjen</span>
+    </div>
+  </div>
+
+  <!-- =================== Låst fullskjerm-visning =================== -->
+  <div id="locked-view">
+    <div class="bg-grid" aria-hidden="true"></div>
+    <div class="bg-glow" aria-hidden="true"></div>
+
+    <header class="chrome">
+      <div class="chrome-item">
+        <span class="chrome-label">Enhet</span>
+        <span class="chrome-value" id="device-name">Familie-PC</span>
+      </div>
+      <div class="chrome-item chrome-item--right">
+        <span class="chrome-label">Status</span>
+        <div class="chrome-right-row">
+          <span class="chrome-value chrome-value--locked">
+            <span class="dot" aria-hidden="true"></span>
+            Låst · <span id="clock">--:--</span>
+          </span>
+          <button class="icon-btn" id="btn-settings" title="Innstillinger" aria-label="Innstillinger">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M19.4 13.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V19.5a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.04H4.5a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.04 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H10.6a1.7 1.7 0 0 0 1.04-1.56V4.5a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.56 1.04h.09a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.04Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="stage">
+      <section class="card" id="card">
+        <div class="icon-badge" id="icon-badge">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M12 7.5V12L15 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+
+        <p class="eyebrow" id="card-eyebrow">Skjermtid</p>
+        <h1 id="card-title">Tiden er ute!</h1>
+        <p class="body-text" id="card-body">
+          Denne enheten er låst på grunn av skjermtidsinnstillingene dine.
+          Du kan bruke den igjen kl. <strong id="unlock-time">07:00</strong>,
+          eller spør en voksen om mer tid i dag.
+        </p>
+
+        <!-- ---------- Standardvisning: de tre knappene ---------- -->
+        <div class="actions" id="actions-default">
+          <div class="switch-wrap">
+            <button class="btn btn-outline" id="btn-switch-toggle" aria-haspopup="true" aria-expanded="false">
+              Bytt bruker eller slå av PC
+            </button>
+            <div class="switch-menu" id="switch-menu" hidden>
+              <button class="switch-option" id="btn-switch-user">Bytt bruker</button>
+              <button class="switch-option switch-option--danger" id="btn-shutdown">Slå av PC</button>
+            </div>
+          </div>
+          <button class="btn btn-outline" id="btn-earn-time">Kjør for å tjene tid</button>
+          <button class="btn btn-primary" id="btn-more-time">Få mer tid</button>
+        </div>
+
+        <!-- ---------- Minispill: 3D bilspill for å tjene tid ---------- -->
+        <div class="game-panel" id="game-panel" hidden>
+          <div class="game-head">
+            <p class="pin-label">Kjør gjennom den hvite sirkelen med riktig svar — unngå bilene</p>
+            <p class="game-earned">Opptjent: <strong id="game-earned-value">00:00</strong> · Lommebok: <strong id="game-wallet-value">0</strong> mynter</p>
+          </div>
+          <div class="car-game-wrap" id="car-game-wrap">
+            <canvas id="car-game-canvas" aria-label="Highway gangetabell-spill"></canvas>
+            <div class="car-game-hud">
+              <div class="car-hud-top">
+                <span class="car-hud-stat" id="game-combo">Rekke: <strong id="streak-value">0</strong></span>
+                <button type="button" class="car-hud-fs-btn" id="btn-game-fullscreen" title="Fullskjerm (F)">⛶</button>
+                <span class="car-hud-stat" id="game-coins">Mynter: <strong id="coins-value">0</strong></span>
+              </div>
+              <div class="car-hud-math">
+                <div class="car-hud-question" id="car-hud-question" hidden>3 × 5 = ?</div>
+                <div class="car-hud-answers" id="car-hud-answers" hidden></div>
+              </div>
+              <span class="car-hud-hint">&larr; &rarr; bytt fil · W/&uarr; gass · S/&darr; brems</span>
+            </div>
+            <div class="car-game-over" id="car-game-over" hidden>
+              <p class="car-game-over-title" id="car-game-over-title">Runden er over</p>
+              <p class="car-game-over-desc" id="car-game-over-desc"></p>
+              <button class="btn btn-primary" id="btn-game-retry" type="button">Spill igjen</button>
+            </div>
+          </div>
+          <p class="game-budget" id="game-budget"></p>
+          <p class="pin-error" id="game-error" role="alert" hidden></p>
+          <div class="game-actions">
+            <button class="btn btn-outline" id="btn-open-shop">Garasje</button>
+            <button class="btn btn-primary" id="btn-game-cash-out">Ferdig – bruk tiden</button>
+          </div>
+        </div>
+
+        <!-- ---------- Garasje: deler, lakk og baner ---------- -->
+        <div class="shop-panel garage-panel" id="shop-panel" hidden>
+          <div class="garage-top">
+            <button class="garage-back" id="btn-shop-back" type="button" aria-label="Tilbake">←</button>
+            <p class="garage-title">GARASJE</p>
+            <p class="garage-coins"><span aria-hidden="true">◆</span> <strong id="shop-coins">0</strong></p>
+          </div>
+
+          <div class="garage-bay">
+            <div class="garage-car" id="garage-car-preview" aria-hidden="true">
+              <svg viewBox="0 0 200 90" class="garage-car-svg">
+                <ellipse cx="100" cy="78" rx="70" ry="6" fill="rgba(0,0,0,0.35)"/>
+                <path id="garage-car-body" d="M28 58 L42 40 L70 32 L130 32 L158 40 L172 58 L168 68 L32 68 Z" fill="#38e6ac"/>
+                <path d="M72 34 L88 22 L118 22 L136 34 Z" fill="rgba(20,40,36,0.85)"/>
+                <rect x="78" y="24" width="20" height="10" rx="2" fill="rgba(110,253,255,0.35)"/>
+                <rect x="104" y="24" width="20" height="10" rx="2" fill="rgba(110,253,255,0.35)"/>
+                <circle cx="55" cy="68" r="12" fill="#1a1e1c" stroke="#9aa8a2" stroke-width="3"/>
+                <circle cx="145" cy="68" r="12" fill="#1a1e1c" stroke="#9aa8a2" stroke-width="3"/>
+                <circle cx="55" cy="68" r="5" fill="#4a524e"/>
+                <circle cx="145" cy="68" r="5" fill="#4a524e"/>
+              </svg>
+            </div>
+            <p class="garage-car-label" id="garage-car-label">Mint · Nattbyen</p>
+          </div>
+
+          <div class="garage-tabs" role="tablist">
+            <button type="button" class="garage-tab is-active" data-tab="parts" role="tab">Deler</button>
+            <button type="button" class="garage-tab" data-tab="paint" role="tab">Lakk</button>
+            <button type="button" class="garage-tab" data-tab="maps" role="tab">Baner</button>
+          </div>
+
+          <div class="garage-shelf" id="shop-upgrades" data-shelf="parts"></div>
+          <div class="garage-shelf" id="shop-paints" data-shelf="paint" hidden></div>
+          <div class="garage-shelf" id="shop-maps" data-shelf="maps" hidden></div>
+        </div>
+
+        <!-- ---------- PIN-panel: en voksen godkjenner mer tid ---------- -->
+        <div class="pin-panel" id="pin-panel" hidden>
+          <p class="pin-label">En voksen kan godkjenne mer tid i dag</p>
+          <div class="pin-row">
+            <input type="password" inputmode="numeric" autocomplete="off" maxlength="8"
+                   id="pin-input" placeholder="PIN-kode" class="pin-input" aria-label="PIN-kode" />
+            <button class="btn btn-primary btn-sm" id="btn-pin-confirm">Lås opp</button>
+          </div>
+          <p class="pin-error" id="pin-error" role="alert" hidden>Feil PIN-kode. Prøv igjen.</p>
+          <button class="link-btn" id="btn-pin-cancel">Avbryt</button>
+        </div>
+
+        <!-- ---------- Bekreftelse ---------- -->
+        <div class="granted-panel" id="granted-panel" hidden>
+          <div class="icon-badge icon-badge--success" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M5 12.5L9.5 17L19 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <p class="body-text" id="granted-text">Mer tid innvilget.</p>
+        </div>
+
+        <!-- ---------- Innstillinger: PIN-sperre ---------- -->
+        <div class="settings-gate" id="settings-gate" hidden>
+          <p class="settings-title">Innstillinger er låst</p>
+          <p class="pin-label">Kun en voksen kan åpne dette. Skriv inn PIN-koden.</p>
+          <div class="pin-row">
+            <input type="password" inputmode="numeric" maxlength="8" id="settings-pin-input"
+                   class="pin-input" placeholder="PIN-kode" aria-label="PIN-kode" />
+            <button class="btn btn-primary btn-sm" id="btn-settings-pin-confirm">Åpne</button>
+          </div>
+          <p class="pin-error" id="settings-pin-error" role="alert" hidden>Feil PIN-kode.</p>
+          <button class="link-btn" id="btn-settings-gate-cancel">Lukk innstillinger</button>
+        </div>
+
+        <!-- ---------- Innstillinger: skjema ---------- -->
+        <div class="settings-panel" id="settings-panel" hidden>
+          <p class="settings-title">Innstillinger</p>
+          <p class="settings-hint">Endringene lagres når du trykker «Lagre». Du kan lukke bare innstillingene uten å lukke appen.</p>
+
+          <p class="settings-section">Tid og spill</p>
+
+          <label class="field-label" for="set-unlock-time">Opplåsingstidspunkt (vises i meldingen)</label>
+          <input type="text" id="set-unlock-time" class="text-input" placeholder="07:00" />
+
+          <label class="field-label" for="set-grant-minutes">Minutter en voksen gir ved «Få mer tid»</label>
+          <input type="number" min="1" id="set-grant-minutes" class="text-input" />
+
+          <label class="field-label" for="set-seconds-per-hit">Sekunder opptjent per mynt i bilspillet</label>
+          <input type="number" min="1" id="set-seconds-per-hit" class="text-input" />
+
+          <label class="field-label" for="set-max-earn">Maks opptjent per dag i minutter (0 = ingen grense)</label>
+          <input type="number" min="0" id="set-max-earn" class="text-input" />
+
+          <p class="settings-section">PIN-kode</p>
+          <p class="settings-hint">La feltene stå tomme for å beholde dagens PIN. Ny kode må bekreftes.</p>
+
+          <label class="field-label" for="set-new-pin">Ny PIN-kode</label>
+          <input type="password" inputmode="numeric" maxlength="8" id="set-new-pin"
+                 class="text-input" placeholder="••••" autocomplete="off" />
+
+          <label class="field-label" for="set-confirm-pin">Bekreft ny PIN-kode</label>
+          <input type="password" inputmode="numeric" maxlength="8" id="set-confirm-pin"
+                 class="text-input" placeholder="••••" autocomplete="off" />
+
+          <p class="settings-section">Windows</p>
+          <label class="toggle-row" for="set-autostart">
+            <input type="checkbox" id="set-autostart" />
+            <span>Start Skjermtid automatisk når Windows starter</span>
+          </label>
+
+          <p class="pin-error" id="settings-save-error" role="alert" hidden></p>
+          <p class="settings-ok" id="settings-save-ok" role="status" hidden>Lagret.</p>
+
+          <div class="game-actions">
+            <button class="btn btn-outline btn-sm" id="btn-settings-cancel">Lukk</button>
+            <button class="btn btn-primary" id="btn-settings-save">Lagre</button>
+          </div>
+        </div>
+      </section>
+
+      <p class="brandmark"><span class="brand-dot" aria-hidden="true"></span>Skjermtid</p>
+    </main>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
