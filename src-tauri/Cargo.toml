@@ -1,6 +1,6 @@
 [package]
 name = "safe-home"
-version = "0.1.0"
+version = "0.1.1"
 description = "Safe Home — skjermtidslås for familien, med eget design"
 edition = "2021"
 
