@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Skjermtid</title>
+  <title>Safe Home</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -53,13 +53,59 @@
           </svg>
         </div>
 
-        <p class="eyebrow" id="card-eyebrow">Skjermtid</p>
+        <p class="eyebrow" id="card-eyebrow">Safe Home</p>
         <h1 id="card-title">Tiden er ute!</h1>
         <p class="body-text" id="card-body">
           Denne enheten er låst på grunn av skjermtidsinnstillingene dine.
           Du kan bruke den igjen kl. <strong id="unlock-time">07:00</strong>,
           eller spør en voksen om mer tid i dag.
         </p>
+
+        <!-- ---------- Førstegangsoppsett ---------- -->
+        <div class="setup-panel" id="setup-panel" hidden>
+          <p class="settings-title">Velkommen til Safe Home</p>
+          <p class="settings-hint">
+            Første gang appen startes må en voksen konfigurere PIN-kode og
+            hvor mye skjermtid som gis. Dette trengs bare én gang.
+          </p>
+
+          <p class="settings-section">PIN-kode</p>
+          <p class="settings-hint">Velg en PIN som bare voksne kjenner (4–8 siffer).</p>
+
+          <label class="field-label" for="setup-pin">PIN-kode</label>
+          <input type="password" inputmode="numeric" maxlength="8" id="setup-pin"
+                 class="text-input" placeholder="••••" autocomplete="new-password" />
+
+          <label class="field-label" for="setup-pin-confirm">Bekreft PIN-kode</label>
+          <input type="password" inputmode="numeric" maxlength="8" id="setup-pin-confirm"
+                 class="text-input" placeholder="••••" autocomplete="new-password" />
+
+          <p class="settings-section">Skjermtid</p>
+
+          <label class="field-label" for="setup-seconds-per-hit">Sekunder skjermtid per riktig mattestykke</label>
+          <input type="number" min="1" id="setup-seconds-per-hit" class="text-input" value="20" />
+
+          <label class="field-label" for="setup-grant-minutes">Minutter en voksen gir ved «Få mer tid»</label>
+          <input type="number" min="1" id="setup-grant-minutes" class="text-input" value="30" />
+
+          <label class="field-label" for="setup-max-earn">Maks opptjent per dag i minutter (0 = ingen grense)</label>
+          <input type="number" min="0" id="setup-max-earn" class="text-input" value="90" />
+
+          <label class="field-label" for="setup-unlock-time">Opplåsingstidspunkt (vises i meldingen)</label>
+          <input type="text" id="setup-unlock-time" class="text-input" placeholder="07:00" value="07:00" />
+
+          <p class="settings-section">Windows</p>
+          <label class="toggle-row" for="setup-autostart">
+            <input type="checkbox" id="setup-autostart" checked />
+            <span>Start Safe Home automatisk når Windows starter</span>
+          </label>
+
+          <p class="pin-error" id="setup-error" role="alert" hidden></p>
+
+          <div class="game-actions">
+            <button class="btn btn-primary" id="btn-setup-save">Fullfør oppsett</button>
+          </div>
+        </div>
 
         <!-- ---------- Standardvisning: de tre knappene ---------- -->
         <div class="actions" id="actions-default">
@@ -194,7 +240,7 @@
           <label class="field-label" for="set-grant-minutes">Minutter en voksen gir ved «Få mer tid»</label>
           <input type="number" min="1" id="set-grant-minutes" class="text-input" />
 
-          <label class="field-label" for="set-seconds-per-hit">Sekunder opptjent per mynt i bilspillet</label>
+          <label class="field-label" for="set-seconds-per-hit">Sekunder skjermtid per riktig mattestykke</label>
           <input type="number" min="1" id="set-seconds-per-hit" class="text-input" />
 
           <label class="field-label" for="set-max-earn">Maks opptjent per dag i minutter (0 = ingen grense)</label>
@@ -213,8 +259,8 @@
 
           <p class="settings-section">Windows</p>
           <label class="toggle-row" for="set-autostart">
-            <input type="checkbox" id="set-autostart" />
-            <span>Start Skjermtid automatisk når Windows starter</span>
+            <input type="checkbox" id="set-autostart" checked />
+            <span>Start Safe Home automatisk når Windows starter</span>
           </label>
 
           <p class="pin-error" id="settings-save-error" role="alert" hidden></p>
@@ -227,7 +273,7 @@
         </div>
       </section>
 
-      <p class="brandmark"><span class="brand-dot" aria-hidden="true"></span>Skjermtid</p>
+      <p class="brandmark"><span class="brand-dot" aria-hidden="true"></span>Safe Home</p>
     </main>
   </div>
 

@@ -1,8 +1,12 @@
-# Skjermtid (Tauri)
+# Safe Home (Tauri)
 
 En egen erstatning for Windows' innebygde Family Safety-skjermtidslås
 ("Time's up!"), bygget i Tauri med design hentet fra ZeBeyond-referansen
 (mørk bakgrunn, rutenett, grønt glød, mint/cyan-gradient-knapp).
+
+Ved første oppstart må en voksen konfigurere PIN-kode, sekunder per
+mattestykke og øvrige skjermtidsinnstillinger. Alt+F4 og Start-menyen
+blokkeres mens låseskjermen er synlig.
 
 ## Funksjoner
 
@@ -68,7 +72,7 @@ i stedet for en vanlig bølge:
 - Mynter gir fortsatt skjermtid akkurat som før, men hver mynt legges
   også i en **vedvarende lommebok** som brukes i butikken.
 - Profilen lagres i `localStorage` under nøkkelen
-  `skjermtid-car-profile` (fungerer både i Tauri-webview og
+  `safe-home-car-profile` (fungerer både i Tauri-webview og
   nettleser-forhåndsvisning) og inneholder: `coins`, `upgrades`
   (nivå per id), `ownedPaints`, `ownedMaps`, `selectedPaint`,
   `selectedMap`.
@@ -147,11 +151,14 @@ npm install
 npm run tauri dev
 ```
 
-## Bygge en installerbar .exe
+## Bygge en installerbar .exe lokalt
 
 ```bash
 npm run tauri build
 ```
+
+For at oppdaterings-signaturer skal genereres lokalt trenger du
+`TAURI_SIGNING_PRIVATE_KEY` (se under).
 
 Legg gjerne til egne ikoner før du bygger en ferdig installasjonsfil:
 
@@ -160,12 +167,60 @@ npm install -g @tauri-apps/cli
 tauri icon sti/til/din-logo.png
 ```
 
+## Release via GitHub Actions
+
+GitHub bygger Windows-installeren, publiserer en Release og legger ut
+`latest.json` som appen bruker til automatiske oppdateringer.
+
+### Ny versjon (anbefalt)
+
+1. Gå til **Actions → Release → Run workflow**
+2. Velg bump-type:
+   - **patch** — `0.1.0` → `0.1.1` (små fikser)
+   - **minor** — `0.1.0` → `0.2.0` (nye funksjoner)
+   - **major** — `0.1.0` → `1.0.0` (store endringer)
+3. Workflowen bumper versjon i `package.json`, `Cargo.toml` og
+   `tauri.conf.json`, lager tag `vX.Y.Z`, bygger NSIS/MSI og publiserer
+   releasen.
+
+### Manuell tag
+
+```bash
+npm run bump -- patch   # eller minor / major
+git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
+git commit -m "chore: bump version"
+git tag v$(node -p "require('./package.json').version")
+git push origin main --tags
+```
+
+### Secrets (allerede satt for dette repoet)
+
+| Secret | Beskrivelse |
+|--------|-------------|
+| `TAURI_SIGNING_PRIVATE_KEY` | Privat nøkkel for å signere oppdateringer |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Valgfri passord (tom hvis nøkkelen er uten) |
+
+Privat nøkkel ligger lokalt i `%USERPROFILE%\.tauri\safe-home.key`.
+**Mist aldri denne** — uten den kan ikke nye oppdateringer signeres for
+brukere som allerede har appen.
+
+## Automatiske oppdateringer
+
+Installerte klienter sjekker
+`https://github.com/matwebmaker-lab/Safe-Home/releases/latest/download/latest.json`
+noen sekunder etter oppstart. Finnes en nyere signert versjon, lastes den
+ned og installeres (NSIS, passiv modus), og appen starter på nytt.
+
+- Fungerer bare i **release-bygg** (ikke `tauri dev`).
+- Brukere som har en eldre installasjon *uten* updater må installere én
+  gang manuelt fra GitHub Releases; deretter går resten av seg selv.
+
 ## Hvordan data lagres
 
 Appen lagrer to små JSON-filer i:
 
 ```
-%APPDATA%\no.familie.skjermtid\
+%APPDATA%\no.familie.safehome\
 ├── config.json   PIN-hash, opplåsingstekst, minutter/sekunder, dagsgrense
 └── state.json     gjenstående tid akkurat nå + opptjent i dag
 ```
@@ -206,7 +261,9 @@ foreldrekontroll-plattform:
 ## Mappestruktur
 
 ```
-skjermtid-tauri/
+safe-home/
+├── .github/workflows/     GitHub Actions (release + versjonsbump)
+├── scripts/bump-version.mjs
 ├── src/                   Frontend (HTML/CSS/JS ES-moduler, ingen bundler)
 │   ├── index.html          Låst visning + HUD-visning + alle paneler
 │   ├── styles.css
@@ -217,9 +274,9 @@ skjermtid-tauri/
 │   ├── game/shop-data.js   Butikkdata: oppgraderinger, lakk og kart-temaer
 │   └── vendor/             three.module.min.js + three.core.min.js (offline)
 ├── src-tauri/              Rust-backend
-│   ├── src/main.rs         Kommandoer, vindusbytte, bakgrunnstråd for nedtelling
+│   ├── src/main.rs         Kommandoer, vindusbytte, bakgrunnstråd, auto-update
 │   ├── Cargo.toml
-│   ├── tauri.conf.json     Vindu: fullskjerm/HUD, ingen dekorasjoner, transparent
+│   ├── tauri.conf.json     Vindu + updater-endepunkt
 │   └── capabilities/
 └── package.json
 ```

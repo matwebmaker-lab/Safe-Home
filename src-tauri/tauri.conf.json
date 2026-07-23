@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Skjermtid",
+  "productName": "Safe Home",
   "version": "0.1.0",
-  "identifier": "no.familie.skjermtid",
+  "identifier": "no.familie.safehome",
   "build": {
     "frontendDist": "../src"
   },
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Skjermtid",
+        "title": "Safe Home",
         "width": 1100,
         "height": 700,
         "fullscreen": true,
@@ -31,6 +31,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -41,6 +42,17 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlCQzA1NzRBMTk0MDMyNDAKUldSQU1rQVpTbGZBbS9TKzh0MUdBWk96d1h6dTdldXlhNnNFcWFsVFo5ZnhaZURLSHdFc1ZYSmoK",
+      "endpoints": [
+        "https://github.com/matwebmaker-lab/Safe-Home/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

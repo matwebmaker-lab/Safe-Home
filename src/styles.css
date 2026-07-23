@@ -793,8 +793,9 @@ body.game-immersive .car-hud-hint {
   gap: 10px;
 }
 
-/* ---------- Innstillinger ---------- */
-.card.settings-active {
+/* ---------- Innstillinger / førstegangsoppsett ---------- */
+.card.settings-active,
+.card.setup-active {
   max-width: min(720px, 96vw);
   width: 100%;
   max-height: min(88vh, 900px);
@@ -805,34 +806,58 @@ body.game-immersive .car-hud-hint {
 .card.settings-active #icon-badge,
 .card.settings-active #card-body,
 .card.settings-active #card-eyebrow,
-.card.settings-active #card-title {
+.card.settings-active #card-title,
+.card.setup-active #icon-badge,
+.card.setup-active #card-body,
+.card.setup-active #card-eyebrow,
+.card.setup-active #card-title {
   display: none;
 }
 
-.card.settings-active .pin-label {
+.card.settings-active .pin-label,
+.card.setup-active .pin-label {
   font-size: 15px;
   margin-bottom: 16px;
   line-height: 1.45;
 }
 
-.card.settings-active .field-label {
+.card.settings-active .field-label,
+.card.setup-active .field-label {
   font-size: 14px;
   margin: 16px 0 8px;
 }
 
 .card.settings-active .text-input,
-.card.settings-active .pin-input {
+.card.settings-active .pin-input,
+.card.setup-active .text-input,
+.card.setup-active .pin-input {
   font-size: 16px;
   padding: 14px 16px;
 }
 
-.card.settings-active .pin-row {
+.card.settings-active .pin-row,
+.card.setup-active .pin-row {
   gap: 12px;
 }
 
-.card.settings-active .btn-sm {
+.card.settings-active .btn-sm,
+.card.setup-active .btn-sm {
   padding: 14px 22px;
   font-size: 15px;
+}
+
+.setup-panel .game-actions {
+  margin-top: 24px;
+  justify-content: stretch;
+}
+
+.setup-panel .game-actions .btn {
+  width: 100%;
+}
+
+body.setup-mode #btn-settings {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .settings-title {

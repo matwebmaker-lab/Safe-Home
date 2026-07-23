@@ -1,7 +1,7 @@
 [package]
-name = "skjermtid"
+name = "safe-home"
 version = "0.1.0"
-description = "Egen skjermtid-app med samme funksjoner som Family Safety, i eget design"
+description = "Safe Home — skjermtidslås for familien, med eget design"
 edition = "2021"
 
 [build-dependencies]
@@ -9,6 +9,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

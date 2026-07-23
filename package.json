@@ -1,10 +1,11 @@
 {
-  "name": "skjermtid",
+  "name": "safe-home",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "tauri": "tauri",
-    "preview": "npx --yes serve src -p 3456"
+    "preview": "npx --yes serve src -p 3456",
+    "bump": "node scripts/bump-version.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

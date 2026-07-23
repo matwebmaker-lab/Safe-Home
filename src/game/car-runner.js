@@ -1,5 +1,5 @@
 // =====================================================================
-// 3D bilspill: Highway Times Tables-stil for Skjermtid
+// 3D bilspill: Highway Times Tables-stil for Safe Home
 // Fire filer, matte hver 2. bølge (1–12-gangen), fire svarporter på veien.
 // Feil svar / miss / krasj avslutter runden. Trafikk mellom oppgavene.
 // Kart-temaer, lakk, oppgraderinger (turbo/magnet/skjold).

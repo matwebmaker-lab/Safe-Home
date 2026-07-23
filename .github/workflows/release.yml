@@ -1,0 +1,127 @@
+name: Release
+
+# Bygg Windows-installer, publiser GitHub Release og latest.json for auto-oppdatering.
+#
+# Ny release (anbefalt):
+#   Actions → Release → Run workflow → velg patch / minor / major
+#
+# Alternativt: push en tag manuelt, f.eks. git tag v0.2.0 && git push origin v0.2.0
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Versjonsbump (patch = 0.1.0→0.1.1, minor→0.2.0, major→1.0.0)"
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.bump.outputs.tag }}
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Bump version
+        id: bump
+        run: |
+          VERSION=$(node scripts/bump-version.mjs "${{ inputs.bump }}")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Ny versjon: $VERSION"
+
+      - name: Commit, tag and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.version }}"
+          git tag "${{ steps.bump.outputs.tag }}"
+          git push origin HEAD:${{ github.ref_name }}
+          git push origin "${{ steps.bump.outputs.tag }}"
+
+  publish:
+    needs: [bump]
+    # Samme kjøring etter bump, ELLER direkte ved manuell tag-push.
+    # (GITHUB_TOKEN-push av tag starter ikke en ny workflow — derfor bygger vi her.)
+    if: |
+      always() && (
+        (github.event_name == 'workflow_dispatch' && needs.bump.result == 'success') ||
+        (github.event_name == 'push' && needs.bump.result == 'skipped')
+      )
+    permissions:
+      contents: write
+    runs-on: windows-latest
+    steps:
+      - name: Resolve checkout ref
+        id: ref
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "ref=${{ needs.bump.outputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${{ github.ref }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and publish
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v__VERSION__
+          releaseName: "Safe Home v__VERSION__"
+          releaseBody: |
+            Installer for Safe Home.
+
+            Brukere med appen allerede installert får oppdateringen automatisk ved neste oppstart.
+          releaseDraft: false
+          prerelease: false
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true

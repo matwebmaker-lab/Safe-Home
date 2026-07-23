@@ -22,6 +22,9 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+*.key
+*.key.pub
+.tauri/
 
 # OS
 .DS_Store

@@ -4,7 +4,8 @@
 // i Tauri-webview og i nettleser-forhåndsvisning).
 // =====================================================================
 
-const STORAGE_KEY = "skjermtid-car-profile";
+const STORAGE_KEY = "safe-home-car-profile";
+const LEGACY_STORAGE_KEY = "skjermtid-car-profile";
 
 const DEFAULT_PROFILE = {
   coins: 0, // vedvarende lommebok (myntene gir OGSÅ skjermtid som før)
@@ -18,7 +19,9 @@ const DEFAULT_PROFILE = {
 export function loadProfile() {
   const profile = JSON.parse(JSON.stringify(DEFAULT_PROFILE));
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    const raw =
+      localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
+    const saved = JSON.parse(raw);
     if (!saved || typeof saved !== "object") return profile;
     profile.coins = Math.max(0, saved.coins | 0);
     for (const key of Object.keys(profile.upgrades)) {

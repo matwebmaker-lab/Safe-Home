@@ -28,11 +28,12 @@ const mock = {
   grantMinutes: 30,
   secondsPerHit: 20,
   maxEarnMinutesPerDay: 90,
-  autostart: false,
+  autostart: true,
   earnedToday: 0,
   pin: "1234",
   remainingSeconds: 0,
   tickHandle: null,
+  configured: false,
 };
 
 async function mockInvoke(cmd, args) {
@@ -46,7 +47,22 @@ async function mockInvoke(cmd, args) {
         secondsPerHit: mock.secondsPerHit,
         maxEarnMinutesPerDay: mock.maxEarnMinutesPerDay,
         autostart: mock.autostart,
+        needsSetup: !mock.configured,
       };
+    case "complete_setup": {
+      if (mock.configured) throw "Appen er allerede konfigurert.";
+      const pin = String(args.pin || "").trim();
+      if (pin.length < 4 || pin.length > 8) throw "PIN-koden må være mellom 4 og 8 tegn.";
+      if (!/^\d+$/.test(pin)) throw "PIN-koden kan bare inneholde tall.";
+      mock.pin = pin;
+      mock.unlockTime = args.unlockTime;
+      mock.grantMinutes = args.grantMinutes;
+      mock.secondsPerHit = args.secondsPerHit;
+      mock.maxEarnMinutesPerDay = args.maxEarnMinutesPerDay;
+      mock.autostart = Boolean(args.autostart);
+      mock.configured = true;
+      return null;
+    }
     case "get_status":
       return { remainingSeconds: mock.remainingSeconds };
     case "get_earn_budget": {
@@ -201,35 +217,71 @@ function resetToDefaultActions() {
   $("granted-panel").hidden = true;
   $("settings-gate").hidden = true;
   $("settings-panel").hidden = true;
+  $("setup-panel").hidden = true;
   $("shop-panel").hidden = true;
   $("switch-menu").hidden = true;
   $("card").classList.remove("game-active");
   $("card").classList.remove("shop-active");
   $("card").classList.remove("settings-active");
-  document.body.classList.remove("game-immersive");
+  $("card").classList.remove("setup-active");
+  document.body.classList.remove("game-immersive", "setup-mode");
   stopGame();
+}
+
+function showSetupWizard(settings) {
+  lockedView.hidden = false;
+  hudView.hidden = true;
+  document.body.classList.add("mode-locked", "setup-mode");
+  document.body.classList.remove("mode-hud", "hud-urgent");
+  if (hasTauri) invoke("ensure_locked_fullscreen").catch(() => {});
+
+  $("actions-default").hidden = true;
+  $("game-panel").hidden = true;
+  $("pin-panel").hidden = true;
+  $("granted-panel").hidden = true;
+  $("settings-gate").hidden = true;
+  $("settings-panel").hidden = true;
+  $("shop-panel").hidden = true;
+  $("setup-panel").hidden = false;
+  $("card").classList.add("setup-active");
+  $("card").classList.remove("game-active", "shop-active", "settings-active");
+
+  $("setup-seconds-per-hit").value = settings.secondsPerHit ?? 20;
+  $("setup-grant-minutes").value = settings.grantMinutes ?? 30;
+  $("setup-max-earn").value = settings.maxEarnMinutesPerDay ?? 90;
+  $("setup-unlock-time").value = settings.unlockTime || "07:00";
+  $("setup-autostart").checked = settings.autostart !== false;
+  $("setup-pin").value = "";
+  $("setup-pin-confirm").value = "";
+  $("setup-error").hidden = true;
+  $("setup-pin").focus();
 }
 
 // ---------- Oppstart ----------
 async function init() {
+  let settings = null;
   try {
-    const settings = await invoke("get_settings_public");
+    settings = await invoke("get_settings_public");
     $("unlock-time").textContent = settings.unlockTime;
     secondsPerHit = settings.secondsPerHit;
   } catch (err) {
     console.error("Klarte ikke å hente innstillinger:", err);
   }
 
-  try {
-    const status = await invoke("get_status");
-    if (status.remainingSeconds > 0) {
-      showHudView(status.remainingSeconds);
-    } else {
+  if (settings?.needsSetup) {
+    showSetupWizard(settings);
+  } else {
+    try {
+      const status = await invoke("get_status");
+      if (status.remainingSeconds > 0) {
+        showHudView(status.remainingSeconds);
+      } else {
+        showLockedView();
+      }
+    } catch (err) {
+      console.error("Klarte ikke å hente status:", err);
       showLockedView();
     }
-  } catch (err) {
-    console.error("Klarte ikke å hente status:", err);
-    showLockedView();
   }
 
   if (hasTauri) {
@@ -238,19 +290,75 @@ async function init() {
       if (!hudView.hidden) updateHud(event.payload);
     });
     listen("locked", () => {
-      showLockedView();
+      if (!document.body.classList.contains("setup-mode")) showLockedView();
     });
     listen("unlocked", (event) => {
+      if (document.body.classList.contains("setup-mode")) return;
       const remaining = Number(event.payload) || 0;
       if (remaining > 0) showHudView(remaining);
     });
     listen("hud-peek", (event) => {
+      if (document.body.classList.contains("setup-mode")) return;
       const remaining = Number(event.payload) || 0;
       if (remaining > 0) showHudView(remaining);
     });
   }
 }
 init();
+
+// ---------- Førstegangsoppsett ----------
+$("btn-setup-save").addEventListener("click", async () => {
+  const errEl = $("setup-error");
+  errEl.hidden = true;
+
+  const pin = $("setup-pin").value.trim();
+  const confirm = $("setup-pin-confirm").value.trim();
+  const unlockTime = $("setup-unlock-time").value.trim() || "07:00";
+  const grantMinutes = Math.max(1, parseInt($("setup-grant-minutes").value, 10) || 1);
+  const secondsPerHitVal = Math.max(1, parseInt($("setup-seconds-per-hit").value, 10) || 1);
+  const maxEarn = Math.max(0, parseInt($("setup-max-earn").value, 10) || 0);
+  const autostart = $("setup-autostart").checked;
+
+  if (!pin || !confirm) {
+    errEl.hidden = false;
+    errEl.textContent = "Skriv inn og bekreft PIN-koden.";
+    return;
+  }
+  if (pin !== confirm) {
+    errEl.hidden = false;
+    errEl.textContent = "PIN-kodene er ikke like. Prøv igjen.";
+    return;
+  }
+  if (pin.length < 4 || pin.length > 8) {
+    errEl.hidden = false;
+    errEl.textContent = "PIN-koden må være mellom 4 og 8 tegn.";
+    return;
+  }
+  if (!/^\d+$/.test(pin)) {
+    errEl.hidden = false;
+    errEl.textContent = "PIN-koden kan bare inneholde tall.";
+    return;
+  }
+
+  try {
+    await invoke("complete_setup", {
+      pin,
+      unlockTime,
+      grantMinutes,
+      secondsPerHit: secondsPerHitVal,
+      maxEarnMinutesPerDay: maxEarn,
+      autostart,
+    });
+    secondsPerHit = secondsPerHitVal;
+    $("unlock-time").textContent = unlockTime;
+    if (!hasTauri) mock.configured = true;
+    resetToDefaultActions();
+    showLockedView();
+  } catch (err) {
+    errEl.hidden = false;
+    errEl.textContent = String(err);
+  }
+});
 
 // ---------- "Bytt bruker eller slå av PC" ----------
 const switchToggle = $("btn-switch-toggle");
