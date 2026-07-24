@@ -6,7 +6,7 @@
 import { createCarRunner } from "./game/car-runner.js";
 import { loadProfile, saveProfile, addCoins, purchase, recordBestSurvival } from "./game/profile.js";
 import { UPGRADES, PAINTS, MAPS, CARS, getPaint, getMap, getCar } from "./game/shop-data.js";
-import { createGarageView } from "./game/garage-view.js";
+import { createGarageScene } from "./game/garage-scene.js";
 
 const SURVIVAL_BONUS_RATE = 0.5;
 const SURVIVAL_BONUS_CAP = 180; // sekunder før rewardScale
@@ -687,10 +687,9 @@ function openGarageFromGame() {
   gamePanel.hidden = true;
   $("card").classList.remove("game-active");
   $("card").classList.add("shop-active");
-  setGarageTab("cars");
-  renderShop();
+  renderGarage();
   shopPanel.hidden = false;
-  if (garageView) garageView.setActive(true);
+  if (garageScene) garageScene.setActive(true);
 }
 
 function setBombHealthHud(health) {
@@ -1002,7 +1001,7 @@ $("btn-open-shop").addEventListener("click", () => {
 });
 
 $("btn-shop-back").addEventListener("click", async () => {
-  if (garageView) garageView.setActive(false);
+  if (garageScene) garageScene.setActive(false);
   shopPanel.hidden = true;
   $("card").classList.remove("shop-active");
   $("card").classList.add("game-active");
@@ -1023,268 +1022,214 @@ $("btn-shop-back").addEventListener("click", async () => {
   }
 });
 
-let garageTab = "cars";
+// ---------- Fullskjerm 3D-garasje ----------
+// 3D-scenen kommer fra garage-scene.js (delt med forhåndsvisningen).
+let garageScene = null;
+let garagePop = null; // hvilken popover som er åpen: "cars" | "paint" | "maps"
 
-function setGarageTab(tab) {
-  garageTab = tab;
-  document.querySelectorAll(".garage-tab").forEach((btn) => {
-    btn.classList.toggle("is-active", btn.dataset.tab === tab);
-  });
-  $("shop-cars").hidden = tab !== "cars";
-  $("shop-upgrades").hidden = tab !== "parts";
-  $("shop-paints").hidden = tab !== "paint";
-  $("shop-maps").hidden = tab !== "maps";
+function effTurboLevel() {
+  return Math.min(3, profile.upgrades.turbo + (getCar(profile.selectedCar).perk.turboBonus || 0));
 }
-
-document.querySelectorAll(".garage-tab").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    setGarageTab(btn.dataset.tab);
-  });
-});
-
-// 3D-garasje: roterbar bil som oppdateres ved hvert valg
-let garageView = null;
 
 function updateGaragePreview() {
   const paint = getPaint(profile.selectedPaint);
   const car = getCar(profile.selectedCar);
   const map = getMap(profile.selectedMap);
-  if (!garageView) garageView = createGarageView($("garage-3d-canvas"));
-  garageView.update({
+  if (!garageScene) garageScene = createGarageScene($("garage-3d-canvas"));
+  garageScene.setCar({
     paint: paint.color,
     style: car.style,
     upgrades: profile.upgrades,
   });
-  $("garage-car-label").textContent = `${car.name} · ${paint.name} · ${map.name}`;
+  garageScene.setMapTint(map.theme);
+  $("gf-val-car").textContent = car.name + " ›";
+  $("gf-val-paint").style.background = "#" + paint.color.toString(16).padStart(6, "0");
+  $("gf-val-map").textContent = map.name + " ›";
+  $("gf-perk-text").textContent = Object.keys(car.perk).length
+    ? car.description
+    : `${car.name} har ingen spesialfordel — ennå.`;
 }
 
-function renderShop() {
-  updateWalletDisplays();
-  updateGaragePreview();
-  renderShopCars();
-  renderShopUpgrades();
-  renderShopPaints();
-  renderShopMaps();
-}
-
-function makeActionBtn(label, opts = {}) {
-  const btn = document.createElement("button");
-  btn.className = opts.outline ? "btn btn-outline btn-sm" : "btn btn-primary btn-sm";
-  btn.textContent = label;
-  btn.disabled = !!opts.disabled;
-  if (opts.onClick) btn.addEventListener("click", opts.onClick);
-  return btn;
-}
-
-function renderShopUpgrades() {
-  const wrap = $("shop-upgrades");
+function renderGarageStats() {
+  const style = getCar(profile.selectedCar).style;
+  const handling = { formel: 8, racer: 6, mini: 6, comet: 5, sport: 5, buggy: 4, muskel: 4, pickup: 3 }[style] ?? 5;
+  const brakes = { mini: 7, formel: 6, comet: 6, sport: 5, racer: 5, buggy: 4, muskel: 4, pickup: 3 }[style] ?? 5;
+  const rows = [
+    ["⚡", "Hastighet", 2 + effTurboLevel() * 2],
+    ["🚀", "Akselerasjon", 2 + Math.round(effTurboLevel() * 1.5)],
+    ["🎯", "Håndtering", handling],
+    ["🛑", "Bremser", brakes],
+  ];
+  const wrap = $("gf-stat-rows");
   wrap.textContent = "";
-  wrap.className = "garage-shelf";
-  const icons = { turbo: "T", magnet: "M", skjold: "S" };
+  for (const [ico, name, val] of rows) {
+    const row = document.createElement("div");
+    row.className = "gf-stat";
+    const bars = Array.from({ length: 8 }, (_, i) =>
+      `<i class="${i < val ? "on" : ""}"></i>`).join("");
+    row.innerHTML = `<div class="gf-stat-row"><span class="ico">${ico}</span> ${name}</div><div class="gf-bars">${bars}</div>`;
+    wrap.appendChild(row);
+  }
+}
+
+// ---------- Oppgraderingskort ----------
+const GARAGE_CARD_ICONS = { turbo: "🌀", magnet: "🧲", skjold: "🛡" };
+const GARAGE_CARD_NAMES = { turbo: "MOTOR", magnet: "MAGNET", skjold: "SKJOLD" };
+const GARAGE_SOON_CARDS = [["◎", "DEKK"], ["🧪", "NITRO"]];
+
+function renderGarageCards() {
+  const wrap = $("gf-cards");
+  wrap.textContent = "";
   for (const up of UPGRADES) {
     const level = profile.upgrades[up.id] || 0;
     const maxed = level >= up.prices.length;
-    const multiLevel = up.prices.length > 1;
-    const item = document.createElement("div");
-    item.className = "garage-item";
-    if (level > 0) item.classList.add("is-selected");
-
-    const icon = document.createElement("div");
-    icon.className = "garage-item-icon";
-    icon.textContent = icons[up.id] || "•";
-
-    const text = document.createElement("div");
-    text.className = "garage-item-text";
-    const name = document.createElement("p");
-    name.className = "garage-item-name";
-    name.textContent = multiLevel
-      ? `${up.name}  ·  ${level}/${up.prices.length}`
-      : up.name;
-    const desc = document.createElement("p");
-    desc.className = "garage-item-desc";
-    desc.textContent = up.description;
-    text.append(name, desc);
-
-    let btn;
-    if (maxed) {
-      btn = makeActionBtn(multiLevel ? "Maks" : "Montert", { outline: true, disabled: true });
-    } else {
-      const price = up.prices[level];
-      btn = makeActionBtn(`${price} ◆`, {
-        disabled: profile.coins < price,
-        onClick: () => {
-          if (!purchase(profile, price)) return;
-          profile.upgrades[up.id] = level + 1;
-          saveProfile(profile);
-          markShopDirty();
-          renderShop();
-        },
-      });
-    }
-    item.append(icon, text, btn);
-    wrap.appendChild(item);
-  }
-}
-
-function renderShopPaints() {
-  const wrap = $("shop-paints");
-  wrap.textContent = "";
-  wrap.className = "garage-shelf garage-paints";
-  for (const paint of PAINTS) {
-    const owned = profile.ownedPaints.includes(paint.id);
-    const selected = profile.selectedPaint === paint.id;
+    const price = maxed ? null : up.prices[level];
     const card = document.createElement("div");
-    card.className = "garage-paint" + (selected ? " is-selected" : "");
-
-    const swatch = document.createElement("div");
-    swatch.className = "garage-paint-swatch";
-    swatch.style.background = "#" + paint.color.toString(16).padStart(6, "0");
-
-    const name = document.createElement("p");
-    name.className = "garage-paint-name";
-    name.textContent = paint.name;
-
-    let btn;
-    if (selected) {
-      btn = makeActionBtn("På", { outline: true, disabled: true });
-    } else if (owned) {
-      btn = makeActionBtn("Velg", {
-        onClick: () => {
-          profile.selectedPaint = paint.id;
-          saveProfile(profile);
-          markShopDirty();
-          renderShop();
-        },
-      });
-    } else {
-      btn = makeActionBtn(`${paint.price} ◆`, {
-        disabled: profile.coins < paint.price,
-        onClick: () => {
-          if (!purchase(profile, paint.price)) return;
-          profile.ownedPaints.push(paint.id);
-          profile.selectedPaint = paint.id;
-          saveProfile(profile);
-          markShopDirty();
-          renderShop();
-        },
-      });
-    }
-    card.append(swatch, name, btn);
+    card.className = "gf-card";
+    card.innerHTML = `
+      <h3>${GARAGE_CARD_NAMES[up.id] || up.name}</h3>
+      <div class="big-ico">${GARAGE_CARD_ICONS[up.id] || "⚙"}</div>
+      <div class="lvl">${maxed ? "MAKS NIVÅ" : "NIVÅ " + level}</div>`;
+    const btn = document.createElement("button");
+    btn.className = "buy" + (maxed ? " maxed" : "");
+    btn.type = "button";
+    btn.textContent = maxed ? "✓ Fullt" : `${price} ◆`;
+    btn.disabled = !maxed && profile.coins < price;
+    btn.addEventListener("click", () => {
+      if (maxed || !purchase(profile, price)) return;
+      profile.upgrades[up.id] = level + 1;
+      saveProfile(profile);
+      markShopDirty();
+      renderGarage();
+    });
+    card.appendChild(btn);
+    wrap.appendChild(card);
+  }
+  // Dekk og Nitro er ikke i spillet ennå
+  for (const [ico, name] of GARAGE_SOON_CARDS) {
+    const card = document.createElement("div");
+    card.className = "gf-card soon";
+    card.innerHTML = `
+      <h3>${name}</h3>
+      <div class="big-ico">${ico}</div>
+      <div class="lvl">KOMMER SNART</div>`;
+    const btn = document.createElement("button");
+    btn.className = "buy";
+    btn.type = "button";
+    btn.disabled = true;
+    btn.textContent = "Snart";
+    card.appendChild(btn);
     wrap.appendChild(card);
   }
 }
 
-function mapPreviewGradient(map) {
-  const stops = map.theme?.skyStops || [];
-  if (stops.length < 2) return "linear-gradient(90deg, #1a2822, #38e6ac)";
-  const mid = stops[Math.floor(stops.length / 2)][1];
-  const end = stops[stops.length - 1][1];
-  return `linear-gradient(110deg, ${stops[0][1]}, ${mid}, ${end})`;
-}
-
-function renderShopCars() {
-  const wrap = $("shop-cars");
-  wrap.textContent = "";
-  wrap.className = "garage-shelf garage-maps";
-  for (const car of CARS) {
-    const owned = profile.ownedCars.includes(car.id);
-    const selected = profile.selectedCar === car.id;
-    const card = document.createElement("div");
-    card.className = "garage-map" + (selected ? " is-selected" : "");
-
-    const preview = document.createElement("div");
-    preview.className = "garage-map-preview garage-car-chip";
-    preview.textContent = car.name.slice(0, 1);
-
-    const name = document.createElement("p");
-    name.className = "garage-item-name";
-    name.textContent = car.name;
-
-    const desc = document.createElement("p");
-    desc.className = "garage-item-desc";
-    desc.textContent = car.description;
-
-    let btn;
-    if (selected) {
-      btn = makeActionBtn("I garasjen", { outline: true, disabled: true });
-    } else if (owned) {
-      btn = makeActionBtn("Velg", {
-        onClick: () => {
-          profile.selectedCar = car.id;
-          saveProfile(profile);
-          markShopDirty();
-          renderShop();
-        },
+// ---------- Popovers (bil / lakk / bane) ----------
+function renderGaragePopover(kind) {
+  const pop = $("gf-pop");
+  pop.textContent = "";
+  if (kind === "cars" || kind === "maps") {
+    const items = kind === "cars" ? CARS : MAPS;
+    const ownedKey = kind === "cars" ? "ownedCars" : "ownedMaps";
+    const selectedKey = kind === "cars" ? "selectedCar" : "selectedMap";
+    pop.innerHTML = `<p class="gf-pop-title">${kind === "cars" ? "Velg bil" : "Velg bane"}</p>`;
+    for (const item of items) {
+      const owned = profile[ownedKey].includes(item.id);
+      const selected = profile[selectedKey] === item.id;
+      const afford = profile.coins >= item.price;
+      const el = document.createElement("div");
+      el.className = "gf-pop-item" + (selected ? " is-selected" : "") + (!owned && !afford ? " cant-afford" : "");
+      const priceLabel = selected ? "Valgt" : owned ? "Velg" : `${item.price} ◆`;
+      el.innerHTML = `
+        <span class="nm">${item.name}</span>
+        <span class="pr ${owned || selected ? "owned" : ""}">${priceLabel}</span>
+        <span class="ds">${item.description}</span>`;
+      el.addEventListener("click", () => {
+        if (!owned) {
+          if (!purchase(profile, item.price)) return;
+          profile[ownedKey].push(item.id);
+        }
+        profile[selectedKey] = item.id;
+        saveProfile(profile);
+        markShopDirty();
+        renderGarage();
+        renderGaragePopover(kind);
       });
-    } else {
-      btn = makeActionBtn(`${car.price} ◆`, {
-        disabled: profile.coins < car.price,
-        onClick: () => {
-          if (!purchase(profile, car.price)) return;
-          profile.ownedCars.push(car.id);
-          profile.selectedCar = car.id;
-          saveProfile(profile);
-          markShopDirty();
-          renderShop();
-        },
-      });
+      pop.appendChild(el);
     }
-    card.append(preview, name, desc, btn);
-    wrap.appendChild(card);
+  } else if (kind === "paint") {
+    pop.innerHTML = `<p class="gf-pop-title">Velg lakk</p>`;
+    const sw = document.createElement("div");
+    sw.className = "gf-swatches";
+    for (const p of PAINTS) {
+      const owned = profile.ownedPaints.includes(p.id);
+      const b = document.createElement("button");
+      b.type = "button";
+      b.title = owned ? p.name : `${p.name} — ${p.price} ◆`;
+      b.className = "gf-swatch" + (p.id === profile.selectedPaint ? " is-selected" : "") + (owned ? "" : " locked");
+      b.style.background = "#" + p.color.toString(16).padStart(6, "0");
+      if (!owned) {
+        const tag = document.createElement("span");
+        tag.className = "price-tag";
+        tag.textContent = p.price;
+        b.appendChild(tag);
+      }
+      b.addEventListener("click", () => {
+        if (!profile.ownedPaints.includes(p.id)) {
+          if (!purchase(profile, p.price)) return;
+          profile.ownedPaints.push(p.id);
+        }
+        profile.selectedPaint = p.id;
+        saveProfile(profile);
+        markShopDirty();
+        renderGarage();
+        renderGaragePopover("paint");
+      });
+      sw.appendChild(b);
+    }
+    pop.appendChild(sw);
   }
 }
 
-function renderShopMaps() {
-  const wrap = $("shop-maps");
-  wrap.textContent = "";
-  wrap.className = "garage-shelf garage-maps";
-  for (const map of MAPS) {
-    const owned = profile.ownedMaps.includes(map.id);
-    const selected = profile.selectedMap === map.id;
-    const card = document.createElement("div");
-    card.className = "garage-map" + (selected ? " is-selected" : "");
-
-    const preview = document.createElement("div");
-    preview.className = "garage-map-preview";
-    preview.style.background = mapPreviewGradient(map);
-
-    const name = document.createElement("p");
-    name.className = "garage-item-name";
-    name.textContent = map.name;
-
-    const desc = document.createElement("p");
-    desc.className = "garage-item-desc";
-    desc.textContent = map.description;
-
-    let btn;
-    if (selected) {
-      btn = makeActionBtn("Kjører her", { outline: true, disabled: true });
-    } else if (owned) {
-      btn = makeActionBtn("Velg", {
-        onClick: () => {
-          profile.selectedMap = map.id;
-          saveProfile(profile);
-          markShopDirty();
-          renderShop();
-        },
-      });
+document.querySelectorAll(".gf-row").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const kind = btn.dataset.open;
+    const pop = $("gf-pop");
+    if (garagePop === kind) {
+      pop.hidden = true;
+      garagePop = null;
     } else {
-      btn = makeActionBtn(`${map.price} ◆`, {
-        disabled: profile.coins < map.price,
-        onClick: () => {
-          if (!purchase(profile, map.price)) return;
-          profile.ownedMaps.push(map.id);
-          profile.selectedMap = map.id;
-          saveProfile(profile);
-          markShopDirty();
-          renderShop();
-        },
-      });
+      garagePop = kind;
+      renderGaragePopover(kind);
+      pop.hidden = false;
     }
-    card.append(preview, name, desc, btn);
-    wrap.appendChild(card);
-  }
+  });
+});
+
+function renderGarage() {
+  updateWalletDisplays();
+  updateGaragePreview();
+  renderGarageStats();
+  renderGarageCards();
 }
+
+// START LØPET: ut av garasjen og til modusvalg (bygg runner på nytt ved behov)
+$("btn-shop-start").addEventListener("click", () => {
+  if (garageScene) garageScene.setActive(false);
+  shopPanel.hidden = true;
+  $("card").classList.remove("shop-active");
+  $("card").classList.add("game-active");
+  gamePanel.hidden = false;
+  hideGameOver();
+  setGameImmersive(true);
+  if (shopDirty) {
+    shopDirty = false;
+    if (carRunner) {
+      carRunner.dispose();
+      carRunner = null;
+    }
+  }
+  showModeSelect();
+});
 
 // ---------- Innstillinger ----------
 const settingsGate = $("settings-gate");

@@ -334,7 +334,7 @@ export function createPlayerCar({ paint = 0x38e6ac, turbo = 0, magnet = 0, skjol
     metalness: 0.65,
     roughness: 0.28,
     clearcoat: 0.8,
-    clearcoatRoughness: 0.15,
+    clearcoatRoughness: 0.3,
     emissive: paint,
     emissiveIntensity: 0.04,
   });

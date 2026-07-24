@@ -223,32 +223,6 @@
           </div>
         </div>
 
-        <!-- ---------- Garasje: deler, lakk og baner ---------- -->
-        <div class="shop-panel garage-panel" id="shop-panel" hidden>
-          <div class="garage-top">
-            <button class="garage-back" id="btn-shop-back" type="button" aria-label="Tilbake">←</button>
-            <p class="garage-title">GARASJE</p>
-            <p class="garage-coins"><span aria-hidden="true">◆</span> <strong id="shop-coins">0</strong></p>
-          </div>
-
-          <div class="garage-bay">
-            <canvas id="garage-3d-canvas" title="Dra for å se bilen fra alle sider"></canvas>
-            <p class="garage-car-label" id="garage-car-label">Standard · Mint · Nattbyen</p>
-          </div>
-
-          <div class="garage-tabs" role="tablist">
-            <button type="button" class="garage-tab is-active" data-tab="cars" role="tab">Biler</button>
-            <button type="button" class="garage-tab" data-tab="parts" role="tab">Deler</button>
-            <button type="button" class="garage-tab" data-tab="paint" role="tab">Lakk</button>
-            <button type="button" class="garage-tab" data-tab="maps" role="tab">Baner</button>
-          </div>
-
-          <div class="garage-shelf" id="shop-cars" data-shelf="cars"></div>
-          <div class="garage-shelf" id="shop-upgrades" data-shelf="parts" hidden></div>
-          <div class="garage-shelf" id="shop-paints" data-shelf="paint" hidden></div>
-          <div class="garage-shelf" id="shop-maps" data-shelf="maps" hidden></div>
-        </div>
-
         <!-- ---------- PIN-panel: en voksen godkjenner mer tid ---------- -->
         <div class="pin-panel" id="pin-panel" hidden>
           <p class="pin-label">En voksen kan godkjenne mer tid i dag</p>
@@ -414,6 +388,37 @@
 
       <p class="brandmark"><span class="brand-dot" aria-hidden="true"></span>Safe Home</p>
     </main>
+  </div>
+
+  <!-- ---------- Garasje: fullskjerm 3D-verksted ---------- -->
+  <div class="garage-full" id="shop-panel" hidden>
+    <canvas id="garage-3d-canvas"></canvas>
+
+    <div class="gf-topbar">
+      <button class="gf-topbtn" id="btn-shop-back" type="button"><span class="gf-arr">←</span> Tilbake</button>
+      <div class="gf-wallet"><span class="gf-coin">◆</span> <strong id="shop-coins">0</strong></div>
+      <span class="gf-title">GARASJE</span>
+    </div>
+
+    <div class="gf-panel gf-stats">
+      <h2>Statistikk</h2>
+      <div id="gf-stat-rows"></div>
+    </div>
+    <div class="gf-panel gf-perk">
+      <h2>Bil-fordel</h2>
+      <p id="gf-perk-text"></p>
+    </div>
+
+    <div class="gf-panel gf-menu">
+      <h2>Bil</h2>
+      <button class="gf-row" type="button" data-open="cars"><span class="ico">🚗</span> BIL <span class="val" id="gf-val-car"></span></button>
+      <button class="gf-row" type="button" data-open="paint"><span class="ico">🎨</span> LAKK <span class="val"><span class="dot" id="gf-val-paint"></span> ›</span></button>
+      <button class="gf-row" type="button" data-open="maps"><span class="ico">🗺</span> BANE <span class="val" id="gf-val-map"></span></button>
+    </div>
+    <div class="gf-pop" id="gf-pop" hidden></div>
+
+    <div class="gf-cards" id="gf-cards"></div>
+    <button id="btn-shop-start" class="gf-start" type="button">🏁 START LØPET</button>
   </div>
 
   <script type="module" src="main.js"></script>

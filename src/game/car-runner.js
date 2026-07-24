@@ -6,6 +6,10 @@
 // 100 % prosedyrelt — modellene kommer fra src/3dassets/models.js.
 // =====================================================================
 import * as THREE from "../vendor/three.module.min.js";
+import { EffectComposer } from "../vendor/postprocessing/EffectComposer.js";
+import { RenderPass } from "../vendor/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "../vendor/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "../vendor/postprocessing/OutputPass.js";
 import {
   createPlayerCar, createShieldKit,
   createTrafficCar, createTrafficVan, createTrafficBus, createTrafficTruck,
@@ -213,9 +217,17 @@ export function createCarRunner(canvas, options = {}) {
   }
   renderer.setPixelRatio(lowGraphics ? 1 : Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = !lowGraphics;
-  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.15;
+
+  // Bloom: neon-kantlinjer, lys og skilt gløder (av i lavgrafikk).
+  // Initialiseres etter at scene og kamera er på plass.
+  let composer = null;
+  function renderFrame() {
+    if (composer) composer.render();
+    else renderer.render(scene, camera);
+  }
 
   const disposables = []; // geometrier/materialer/teksturer å rydde opp
 
@@ -255,6 +267,14 @@ export function createCarRunner(canvas, options = {}) {
   // Høyere «chase»-kamera som i Highway Times Tables (ser nedover veien)
   camera.position.set(0, 9.5, 11.5);
   camera.lookAt(0, 0, -18);
+
+  // Bloom nå som scene og kamera finnes (hoppes over i lavgrafikk)
+  if (!lowGraphics) {
+    composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    composer.addPass(new UnrealBloomPass(new THREE.Vector2(1024, 1024), 0.4, 0.4, 0.85));
+    composer.addPass(new OutputPass());
+  }
 
   const fxOverlay = typeof document !== "undefined"
     ? document.getElementById("car-fx-overlay")
@@ -508,6 +528,7 @@ export function createCarRunner(canvas, options = {}) {
     const h = canvas.clientHeight || canvas.parentElement?.clientHeight || 400;
     if (w === 0 || h === 0) return;
     renderer.setSize(w, h, false);
+    if (composer) composer.setSize(w, h);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   }
@@ -819,6 +840,10 @@ export function createCarRunner(canvas, options = {}) {
     renderer.shadowMap.enabled = false;
     moon.castShadow = false;
     renderer.setPixelRatio(1);
+    if (composer) {
+      composer.dispose(); // bloom av — render direkte videre
+      composer = null;
+    }
     if (headlight) {
       car.remove(headlight);
       car.remove(headlight.target);
@@ -864,7 +889,7 @@ export function createCarRunner(canvas, options = {}) {
       };
       effects.update(dt, camBase);
       camera.lookAt(car.position.x * 0.25, 0.2, -18);
-      renderer.render(scene, camera);
+      renderFrame();
       if (elapsed >= endAt) {
         running = false;
         if (rafId !== null) cancelAnimationFrame(rafId);
@@ -910,7 +935,7 @@ export function createCarRunner(canvas, options = {}) {
       const camBaseEarly = { x: car.position.x * 0.4, y: 9.5, z: 11.5 };
       effects.update(dt, camBaseEarly);
       camera.lookAt(car.position.x * 0.25, 0.2, -18);
-      renderer.render(scene, camera);
+      renderFrame();
       return;
     }
 
@@ -1101,7 +1126,7 @@ export function createCarRunner(canvas, options = {}) {
       z: camera.position.z,
     });
 
-    renderer.render(scene, camera);
+    renderFrame();
   }
 
   // ---------- Offentlig API ----------
@@ -1155,7 +1180,7 @@ export function createCarRunner(canvas, options = {}) {
       removeListeners();
       clearWorldObjects();
       effects.clear();
-      renderer.render(scene, camera);
+      renderFrame();
     },
     pause() {
       if (gamePhase === "dying") return;
@@ -1200,7 +1225,7 @@ export function createCarRunner(canvas, options = {}) {
   };
 
   resize();
-  renderer.render(scene, camera);
+  renderFrame();
   opts.onReady();
 
   return api;
