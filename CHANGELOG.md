@@ -9,6 +9,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Full-screen 3D garage: browse cars, paint, tracks, and upgrades on a live preview
+- Coin wallet: earn coins in runs and spend them on cars, paint colors, tracks, turbo, magnet, and shield
+- Cars with gameplay perks (extra turbo, built-in magnet, free shield)
+- Multiple tracks (Night City, Desert, Winter Road, Sunset) with distinct themes
 - Updates section in settings with current version, what’s new, and download progress
 - Daily check for new versions (install starts when an adult taps Update)
 - Game results screen after crash / wrong answer / miss / bomb: survival time, score, bonus screen time, Play again and Garage
@@ -19,8 +23,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Settings uses a sidebar with categories (Tid og spill, PIN-kode, Windows, App-versjon) instead of one long form
-- Parent reward setting is a Small↔Large slider (`rewardScale`) that scales all earned screen time, replacing “seconds per correct answer”
+- Settings uses a sidebar with categories (Time & play, PIN, Windows, App version) instead of one long form
+- Parent reward setting is a Small↔Large slider that scales all earned screen time, replacing “seconds per correct answer”
 
 ## [0.1.1] - 2026-07-24
 
