@@ -1,7 +1,7 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Bump Safe Home-versjon i package.json, Cargo.toml og tauri.conf.json.
- * Bruk: node scripts/bump-version.mjs [patch|minor|major]
+ * Bruk: bun scripts/bump-version.mjs [patch|minor|major]
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";

@@ -128,7 +128,7 @@ Frontend-en er nå ES-moduler (pga. Three.js-importen), så du kan **ikke**
 lenger dobbeltklikke `index.html` direkte — den må serveres over HTTP:
 
 ```bash
-npm run preview
+bun run preview
 ```
 
 Åpne så http://localhost:3456 for å teste alt — bilspillet, meny,
@@ -139,7 +139,7 @@ appen er selve vinduet 250×64px og transparent rundt boksen.
 
 ## Forutsetninger for den ekte appen
 
-- [Node.js](https://nodejs.org)
+- [Bun](https://bun.sh)
 - [Rust](https://www.rust-lang.org/tools/install) + `cargo`
 - Tauris systemavhengigheter for Windows (Microsoft Visual C++ Build
   Tools + WebView2 — WebView2 følger som regel med Windows 10/11)
@@ -147,14 +147,14 @@ appen er selve vinduet 250×64px og transparent rundt boksen.
 ## Kjøre appen i utviklingsmodus
 
 ```bash
-npm install
-npm run tauri dev
+bun install
+bun run dev
 ```
 
 ## Bygge en installerbar .exe lokalt
 
 ```bash
-npm run tauri build
+bun run build
 ```
 
 For at oppdaterings-signaturer skal genereres lokalt trenger du
@@ -163,8 +163,7 @@ For at oppdaterings-signaturer skal genereres lokalt trenger du
 Legg gjerne til egne ikoner før du bygger en ferdig installasjonsfil:
 
 ```bash
-npm install -g @tauri-apps/cli
-tauri icon sti/til/din-logo.png
+bunx --bun @tauri-apps/cli icon sti/til/din-logo.png
 ```
 
 ## Release via GitHub Actions
@@ -186,10 +185,10 @@ GitHub bygger Windows-installeren, publiserer en Release og legger ut
 ### Manuell tag
 
 ```bash
-npm run bump -- patch   # eller minor / major
+bun run bump -- patch   # eller minor / major
 git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
 git commit -m "chore: bump version"
-git tag v$(node -p "require('./package.json').version")
+git tag "v$(bun -e "console.log(require('./package.json').version)")"
 git push origin main --tags
 ```
 
@@ -285,7 +284,7 @@ safe-home/
 
 Rust-koden er skrevet for hånd og kunne ikke kompileres i miljøet den ble
 laget i (ingen `cargo`/Windows-mål tilgjengelig der), så kjør
-`npm run tauri dev` og gi beskjed om du treffer på kompileringsfeil.
+`bun run dev` og gi beskjed om du treffer på kompileringsfeil.
 Frontend-koden (HTML/CSS/JS) er derimot testet og verifisert fullt ut i
 nettleser — alle knapper, spillet, innstillinger og HUD-overgangene
 fungerer som beskrevet.

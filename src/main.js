@@ -1,6 +1,6 @@
 // Bruker Tauris invoke når appen kjører i Tauri, ellers en enkel
 // simulering — slik at frontend kan forhåndsvises i nettleser via
-// `npm run preview` uten at Rust/Tauri må bygges først.
+// `bun run preview` uten at Rust/Tauri må bygges først.
 // (OBS: siden main.js nå er en ES-modul, må forhåndsvisning skje via
 // HTTP-server — å dobbeltklikke index.html direkte fungerer ikke.)
 import { createCarRunner } from "./game/car-runner.js";
@@ -301,6 +301,9 @@ async function init() {
       if (document.body.classList.contains("setup-mode")) return;
       const remaining = Number(event.payload) || 0;
       if (remaining > 0) showHudView(remaining);
+    });
+    listen("open-settings", () => {
+      requestOpenSettings();
     });
   }
 }
@@ -915,26 +918,60 @@ const settingsPinInput = $("settings-pin-input");
 const settingsPinError = $("settings-pin-error");
 let pendingSettingsPin = "";
 
-$("btn-settings").addEventListener("click", async () => {
+async function requestOpenSettings() {
+  if (document.body.classList.contains("setup-mode")) return;
+  // Allerede inne i innstillingspanelet — ikke forstyrr.
+  if (!settingsPanel.hidden) return;
+
+  lockedView.hidden = false;
+  hudView.hidden = true;
+  document.body.classList.remove("mode-hud", "hud-urgent");
+
+  $("game-panel").hidden = true;
+  $("pin-panel").hidden = true;
+  $("granted-panel").hidden = true;
+  $("settings-panel").hidden = true;
+  $("setup-panel").hidden = true;
+  $("shop-panel").hidden = true;
+  $("switch-menu").hidden = true;
+  $("card").classList.remove("game-active", "shop-active", "setup-active");
+  document.body.classList.remove("game-immersive");
+  stopGame();
+
   if (hasTauri) {
     try {
-      await invoke("ensure_locked_fullscreen");
+      await invoke("begin_settings_ui");
     } catch {
       /* forhåndsvisning */
     }
   }
+
   actionsDefault.hidden = true;
   settingsGate.hidden = false;
   settingsPinError.hidden = true;
   settingsPinInput.value = "";
   $("card").classList.add("settings-active");
   settingsPinInput.focus();
+}
+
+async function leaveSettingsUi() {
+  if (!hasTauri) return;
+  try {
+    await invoke("end_settings_ui");
+  } catch {
+    /* forhåndsvisning */
+  }
+}
+
+$("btn-settings").addEventListener("click", () => {
+  requestOpenSettings();
 });
 
-$("btn-settings-gate-cancel").addEventListener("click", () => {
+$("btn-settings-gate-cancel").addEventListener("click", async () => {
   settingsGate.hidden = true;
   actionsDefault.hidden = false;
   $("card").classList.remove("settings-active");
+  await leaveSettingsUi();
 });
 
 $("btn-settings-pin-confirm").addEventListener("click", submitSettingsPin);
@@ -972,10 +1009,11 @@ async function openSettingsPanel() {
   $("card").classList.add("settings-active");
 }
 
-$("btn-settings-cancel").addEventListener("click", () => {
+$("btn-settings-cancel").addEventListener("click", async () => {
   settingsPanel.hidden = true;
   pendingSettingsPin = "";
   resetToDefaultActions();
+  await leaveSettingsUi();
 });
 
 $("btn-settings-save").addEventListener("click", async () => {

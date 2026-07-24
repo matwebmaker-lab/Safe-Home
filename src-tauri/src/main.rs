@@ -8,7 +8,11 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use tauri::{Emitter, Manager, State};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Emitter, Manager, State,
+};
 #[cfg(not(debug_assertions))]
 use tauri_plugin_updater::UpdaterExt;
 
@@ -94,6 +98,8 @@ struct AppState {
     hud_y: Mutex<Option<f64>>,
     /// Bruker har hentet frem HUD med Ctrl+Win (selv om det er god tid igjen).
     hud_manual_show: Mutex<bool>,
+    /// Innstillinger er åpne (tray / ny start) — ikke synk Idle/Hud over UI-et.
+    settings_focus: Mutex<bool>,
 }
 
 fn hash_pin(pin: &str) -> String {
@@ -339,6 +345,9 @@ fn enter_hud_mode(app: &tauri::AppHandle, win: &tauri::WebviewWindow) {
 /// Velg Idle / Hud ut fra gjenstående tid (eller Locked hvis 0).
 /// Ctrl+Win kan tvinge HUD frem via `hud_manual_show`.
 fn sync_unlock_window(app: &tauri::AppHandle, win: &tauri::WebviewWindow, remaining: u64) {
+    if *app.state::<AppState>().settings_focus.lock().unwrap() {
+        return;
+    }
     if remaining == 0 {
         *app.state::<AppState>().hud_manual_show.lock().unwrap() = false;
         enter_locked_mode(app, win);
@@ -351,9 +360,56 @@ fn sync_unlock_window(app: &tauri::AppHandle, win: &tauri::WebviewWindow, remain
     }
 }
 
+/// Vis låseskjerm og be frontend åpne PIN-gate for innstillinger.
+fn request_open_settings(app: &tauri::AppHandle) {
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+    *state.settings_focus.lock().unwrap() = true;
+    if let Some(win) = app.get_webview_window("main") {
+        enter_locked_mode(app, &win);
+        let _ = app.emit("open-settings", ());
+    }
+}
+
+fn setup_system_tray(app: &tauri::App) -> tauri::Result<()> {
+    let settings_item = MenuItem::with_id(app, "settings", "Innstillinger", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&settings_item])?;
+
+    let mut builder = TrayIconBuilder::with_id("main-tray")
+        .tooltip("Safe Home")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| {
+            if event.id().as_ref() == "settings" {
+                request_open_settings(app);
+            }
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                request_open_settings(tray.app_handle());
+            }
+        });
+
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+
+    builder.build(app)?;
+    Ok(())
+}
+
 /// Ctrl+Win: vis/skjul tidspilleren mens skjermen er opplåst.
 fn toggle_hud_hotkey(app: &tauri::AppHandle) {
     let state = app.state::<AppState>();
+    if *state.settings_focus.lock().unwrap() {
+        return;
+    }
     let until = *state.unlocked_until.lock().unwrap();
     let now = now_secs();
     if until <= now {
@@ -524,6 +580,27 @@ fn snapshot_runtime(app: &tauri::AppHandle) -> RuntimeState {
 #[tauri::command]
 fn ensure_locked_fullscreen(app: tauri::AppHandle, window: tauri::WebviewWindow) {
     enter_locked_mode(&app, &window);
+}
+
+/// Hold låseskjerm synlig mens innstillinger er åpne (unngår at Idle skjuler UI).
+#[tauri::command]
+fn begin_settings_ui(app: tauri::AppHandle, window: tauri::WebviewWindow) {
+    *app.state::<AppState>().settings_focus.lock().unwrap() = true;
+    enter_locked_mode(&app, &window);
+}
+
+/// Ferdig med innstillinger — synk Idle/Hud ut fra gjenstående tid.
+#[tauri::command]
+fn end_settings_ui(app: tauri::AppHandle, window: tauri::WebviewWindow) {
+    *app.state::<AppState>().settings_focus.lock().unwrap() = false;
+    let until = *app.state::<AppState>().unlocked_until.lock().unwrap();
+    let remaining = until.saturating_sub(now_secs());
+    if remaining > 0 {
+        sync_unlock_window(&app, &window, remaining);
+        let _ = app.emit("unlocked", remaining);
+    } else {
+        enter_locked_mode(&app, &window);
+    }
 }
 
 /// Felles logikk for å låse opp: legger til `add_seconds` på toppen av
@@ -765,6 +842,10 @@ async fn check_and_install_update(app: tauri::AppHandle) {
 
 fn main() {
     tauri::Builder::default()
+        // Må registreres først slik at en ny start ikke spinner opp en 2. prosess.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            request_open_settings(app);
+        }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let cfg = load_config(app.handle());
@@ -785,6 +866,7 @@ fn main() {
                 hud_x: Mutex::new(runtime.hud_x),
                 hud_y: Mutex::new(runtime.hud_y),
                 hud_manual_show: Mutex::new(false),
+                settings_focus: Mutex::new(false),
             });
 
             if let Some(win) = app.get_webview_window("main") {
@@ -795,6 +877,8 @@ fn main() {
                     enter_locked_mode(app.handle(), &win);
                 }
             }
+
+            setup_system_tray(app)?;
 
             // Ctrl+Windows: hent frem / skjul tidspilleren
             spawn_ctrl_win_hotkey_thread(app.handle().clone());
@@ -870,7 +954,9 @@ fn main() {
             shutdown_pc,
             redeem_more_time,
             redeem_earned_time,
-            ensure_locked_fullscreen
+            ensure_locked_fullscreen,
+            begin_settings_ui,
+            end_settings_ui
         ])
         .run(tauri::generate_context!())
         .expect("feil under oppstart av Tauri-appen");
