@@ -39,6 +39,28 @@ fn default_hud_hotkey() -> String {
     "Ctrl+Shift+H".to_string()
 }
 
+fn default_reward_scale() -> f32 {
+    1.0
+}
+
+fn clamp_reward_scale(scale: f32) -> f32 {
+    scale.clamp(0.5, 2.0)
+}
+
+/// Migrerer eldre `seconds_per_hit` (20 = ×1) til `reward_scale` når feltet mangler.
+fn migrate_reward_scale(cfg: &mut Config) {
+    if cfg.reward_scale_set {
+        cfg.reward_scale = clamp_reward_scale(cfg.reward_scale);
+        return;
+    }
+    // Eldre installasjoner: map sekunder-per-treff (standard 20) → skala.
+    let from_seconds = (cfg.seconds_per_hit as f32) / 20.0;
+    cfg.reward_scale = clamp_reward_scale(from_seconds);
+    cfg.reward_scale_set = true;
+    // Speil tilbake slik at gamle lesere fortsatt får et fornuftig tall.
+    cfg.seconds_per_hit = (cfg.reward_scale * 20.0).round().max(1.0) as u32;
+}
+
 /// Innstillinger en voksen kan endre fra appens eget innstillingspanel
 /// (PIN-beskyttet), lagres i AppData/config.json.
 #[derive(Serialize, Deserialize, Clone)]
@@ -46,7 +68,15 @@ struct Config {
     pin_hash: String,
     unlock_time: String,
     grant_minutes: u32,
+    /// Beholdt for bakoverkompatibilitet; speiles fra reward_scale.
+    #[serde(default = "default_seconds_per_hit")]
     seconds_per_hit: u32,
+    /// Multiplikator for all opptjent skjermtid (0.5 = liten, 2.0 = stor).
+    #[serde(default = "default_reward_scale")]
+    reward_scale: f32,
+    /// true når reward_scale er eksplisitt lagret (ikke bare serde-default).
+    #[serde(default)]
+    reward_scale_set: bool,
     max_earn_minutes_per_day: u32,
     #[serde(default)]
     autostart: bool,
@@ -58,6 +88,10 @@ struct Config {
     configured: bool,
 }
 
+fn default_seconds_per_hit() -> u32 {
+    20
+}
+
 impl Default for Config {
     fn default() -> Self {
         // Tom PIN til førstegangsoppsett er fullført.
@@ -66,6 +100,8 @@ impl Default for Config {
             unlock_time: "07:00".to_string(),
             grant_minutes: 30,
             seconds_per_hit: 20,
+            reward_scale: 1.0,
+            reward_scale_set: true,
             max_earn_minutes_per_day: 90,
             autostart: true,
             hud_hotkey: default_hud_hotkey(),
@@ -328,7 +364,13 @@ fn state_path(app: &tauri::AppHandle) -> PathBuf {
 fn load_config(app: &tauri::AppHandle) -> Config {
     let path = config_path(app);
     if let Ok(data) = fs::read_to_string(&path) {
-        if let Ok(cfg) = serde_json::from_str::<Config>(&data) {
+        if let Ok(mut cfg) = serde_json::from_str::<Config>(&data) {
+            // Eldre filer uten reward_scale: utled fra seconds_per_hit.
+            if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&data) {
+                cfg.reward_scale_set = raw.get("reward_scale").is_some()
+                    || raw.get("rewardScale").is_some();
+            }
+            migrate_reward_scale(&mut cfg);
             // Synk Windows-autostart med lagret innstilling
             let _ = set_windows_autostart(cfg.autostart);
             return cfg;
@@ -503,7 +545,7 @@ fn enter_hud_mode(app: &tauri::AppHandle, win: &tauri::WebviewWindow) {
 
     // Litt større enn selve pillen, så avrundede hjørner har transparent
     // luft rundt (WebView2/DWM tegner ellers en rektangulær «ramme»).
-    let hud_w = 312.0_f64;
+    let hud_w = 356.0_f64;
     let hud_h = 64.0_f64;
     let saved_x = *state.hud_x.lock().unwrap();
     let saved_y = *state.hud_y.lock().unwrap();
@@ -1070,6 +1112,7 @@ fn get_settings_public(state: State<AppState>) -> serde_json::Value {
     serde_json::json!({
         "unlockTime": cfg.unlock_time,
         "grantMinutes": cfg.grant_minutes,
+        "rewardScale": cfg.reward_scale,
         "secondsPerHit": cfg.seconds_per_hit,
         "maxEarnMinutesPerDay": cfg.max_earn_minutes_per_day,
         "autostart": cfg.autostart || is_windows_autostart_enabled(),
@@ -1084,7 +1127,9 @@ fn complete_setup(
     pin: String,
     unlock_time: String,
     grant_minutes: u32,
-    seconds_per_hit: u32,
+    reward_scale: Option<f32>,
+    #[allow(unused_variables)]
+    seconds_per_hit: Option<u32>,
     max_earn_minutes_per_day: u32,
     autostart: bool,
     state: State<AppState>,
@@ -1098,7 +1143,12 @@ fn complete_setup(
     cfg.pin_hash = hash_pin(pin.trim());
     cfg.unlock_time = unlock_time;
     cfg.grant_minutes = grant_minutes.max(1);
-    cfg.seconds_per_hit = seconds_per_hit.max(1);
+    let scale = reward_scale
+        .or_else(|| seconds_per_hit.map(|s| (s as f32) / 20.0))
+        .unwrap_or(1.0);
+    cfg.reward_scale = clamp_reward_scale(scale);
+    cfg.reward_scale_set = true;
+    cfg.seconds_per_hit = (cfg.reward_scale * 20.0).round().max(1.0) as u32;
     cfg.max_earn_minutes_per_day = max_earn_minutes_per_day;
     cfg.autostart = autostart;
     cfg.configured = true;
@@ -1146,7 +1196,9 @@ fn update_settings(
     new_pin: Option<String>,
     unlock_time: String,
     grant_minutes: u32,
-    seconds_per_hit: u32,
+    reward_scale: Option<f32>,
+    #[allow(unused_variables)]
+    seconds_per_hit: Option<u32>,
     max_earn_minutes_per_day: u32,
     autostart: bool,
     hud_hotkey: String,
@@ -1167,7 +1219,12 @@ fn update_settings(
     let hud_hotkey = normalize_hud_hotkey(hud_hotkey.trim())?;
     cfg.unlock_time = unlock_time;
     cfg.grant_minutes = grant_minutes.max(1);
-    cfg.seconds_per_hit = seconds_per_hit.max(1);
+    let scale = reward_scale
+        .or_else(|| seconds_per_hit.map(|s| (s as f32) / 20.0))
+        .unwrap_or(cfg.reward_scale);
+    cfg.reward_scale = clamp_reward_scale(scale);
+    cfg.reward_scale_set = true;
+    cfg.seconds_per_hit = (cfg.reward_scale * 20.0).round().max(1.0) as u32;
     cfg.max_earn_minutes_per_day = max_earn_minutes_per_day;
     cfg.autostart = autostart;
     cfg.hud_hotkey = hud_hotkey;

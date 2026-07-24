@@ -4,8 +4,34 @@
 // (OBS: siden main.js nå er en ES-modul, må forhåndsvisning skje via
 // HTTP-server — å dobbeltklikke index.html direkte fungerer ikke.)
 import { createCarRunner } from "./game/car-runner.js";
-import { loadProfile, saveProfile, addCoins, purchase } from "./game/profile.js";
-import { UPGRADES, PAINTS, MAPS, getPaint, getMap } from "./game/shop-data.js";
+import { loadProfile, saveProfile, addCoins, purchase, recordBestSurvival } from "./game/profile.js";
+import { UPGRADES, PAINTS, MAPS, CARS, getPaint, getMap, getCar } from "./game/shop-data.js";
+import { createGarageView } from "./game/garage-view.js";
+
+const SURVIVAL_BONUS_RATE = 0.5;
+const SURVIVAL_BONUS_CAP = 180; // sekunder før rewardScale
+
+function clampRewardScale(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return 1;
+  return Math.min(2, Math.max(0.5, Math.round(v * 10) / 10));
+}
+
+function formatRewardScaleHint(scale) {
+  const s = clampRewardScale(scale);
+  return `×${s.toFixed(1)} — skalerer mynt, mattesvar og overlevelsesbonus`;
+}
+
+function syncRewardScaleHint(sliderId, hintId) {
+  const slider = $(sliderId);
+  const hint = $(hintId);
+  if (!slider || !hint) return;
+  const update = () => {
+    hint.textContent = formatRewardScaleHint(slider.value);
+  };
+  slider.addEventListener("input", update);
+  update();
+}
 
 const hasTauri = typeof window.__TAURI__ !== "undefined";
 const invoke = hasTauri ? window.__TAURI__.core.invoke : mockInvoke;
@@ -18,7 +44,7 @@ if (hasTauri) {
 } else {
   // I nettleser-forhåndsvisning: vis HUD-en som en liten fast boks i
   // hjørnet i stedet for full bredde, siden det ekte Tauri-vinduet i
-  // HUD-modus faktisk bare er ~312×64px stort.
+  // HUD-modus faktisk bare er ~356×64px stort.
   document.body.classList.add("preview");
 }
 
@@ -26,6 +52,7 @@ if (hasTauri) {
 const mock = {
   unlockTime: "07:00",
   grantMinutes: 30,
+  rewardScale: 1,
   secondsPerHit: 20,
   maxEarnMinutesPerDay: 90,
   autostart: true,
@@ -58,6 +85,7 @@ async function mockInvoke(cmd, args) {
       return {
         unlockTime: mock.unlockTime,
         grantMinutes: mock.grantMinutes,
+        rewardScale: mock.rewardScale,
         secondsPerHit: mock.secondsPerHit,
         maxEarnMinutesPerDay: mock.maxEarnMinutesPerDay,
         autostart: mock.autostart,
@@ -72,7 +100,13 @@ async function mockInvoke(cmd, args) {
       mock.pin = pin;
       mock.unlockTime = args.unlockTime;
       mock.grantMinutes = args.grantMinutes;
-      mock.secondsPerHit = args.secondsPerHit;
+      const scale = clampRewardScale(
+        args.rewardScale != null
+          ? Number(args.rewardScale)
+          : (Number(args.secondsPerHit) || 20) / 20
+      );
+      mock.rewardScale = scale;
+      mock.secondsPerHit = Math.max(1, Math.round(scale * 20));
       mock.maxEarnMinutesPerDay = args.maxEarnMinutesPerDay;
       mock.autostart = Boolean(args.autostart);
       mock.configured = true;
@@ -101,7 +135,15 @@ async function mockInvoke(cmd, args) {
       }
       mock.unlockTime = args.unlockTime;
       mock.grantMinutes = args.grantMinutes;
-      mock.secondsPerHit = args.secondsPerHit;
+      {
+        const scale = clampRewardScale(
+          args.rewardScale != null
+            ? Number(args.rewardScale)
+            : (Number(args.secondsPerHit) || mock.secondsPerHit) / 20
+        );
+        mock.rewardScale = scale;
+        mock.secondsPerHit = Math.max(1, Math.round(scale * 20));
+      }
       mock.maxEarnMinutesPerDay = args.maxEarnMinutesPerDay;
       mock.autostart = Boolean(args.autostart);
       if (args.hudHotkey) mock.hudHotkey = String(args.hudHotkey);
@@ -253,8 +295,8 @@ function updateHud(remainingSeconds) {
 // Dra HUD-pillen rundt på skjermen (Tauri startDragging)
 $("hud-pill").addEventListener("mousedown", async (e) => {
   if (!hasTauri || e.button !== 0) return;
-  // Ikke start dragging når man trykker på innstillinger-knappen
-  if (e.target.closest("#btn-hud-settings")) return;
+  // Ikke start dragging når man trykker på knapper i pillen
+  if (e.target.closest("#btn-hud-settings, #btn-hud-play")) return;
   e.preventDefault();
   try {
     await window.__TAURI__.window.getCurrentWindow().startDragging();
@@ -266,6 +308,11 @@ $("hud-pill").addEventListener("mousedown", async (e) => {
 $("btn-hud-settings").addEventListener("click", (e) => {
   e.stopPropagation();
   requestOpenSettings();
+});
+
+$("btn-hud-play").addEventListener("click", (e) => {
+  e.stopPropagation();
+  openEarnGame();
 });
 
 function resetToDefaultActions() {
@@ -304,7 +351,9 @@ function showSetupWizard(settings) {
   $("card").classList.add("setup-active");
   $("card").classList.remove("game-active", "shop-active", "settings-active");
 
-  $("setup-seconds-per-hit").value = settings.secondsPerHit ?? 20;
+  $("setup-reward-scale").value = clampRewardScale(
+    settings.rewardScale ?? ((settings.secondsPerHit ?? 20) / 20)
+  );
   $("setup-grant-minutes").value = settings.grantMinutes ?? 30;
   $("setup-max-earn").value = settings.maxEarnMinutesPerDay ?? 90;
   $("setup-unlock-time").value = settings.unlockTime || "07:00";
@@ -364,7 +413,9 @@ async function init() {
   try {
     settings = await invoke("get_settings_public");
     $("unlock-time").textContent = settings.unlockTime;
-    secondsPerHit = settings.secondsPerHit;
+    rewardScale = clampRewardScale(
+      settings.rewardScale ?? ((settings.secondsPerHit ?? 20) / 20)
+    );
     applyHudHotkeyLabel(settings.hudHotkey);
   } catch (err) {
     console.error("Klarte ikke å hente innstillinger:", err);
@@ -426,7 +477,7 @@ $("btn-setup-save").addEventListener("click", async () => {
   const confirm = $("setup-pin-confirm").value.trim();
   const unlockTime = $("setup-unlock-time").value.trim() || "07:00";
   const grantMinutes = Math.max(1, parseInt($("setup-grant-minutes").value, 10) || 1);
-  const secondsPerHitVal = Math.max(1, parseInt($("setup-seconds-per-hit").value, 10) || 1);
+  const rewardScaleVal = clampRewardScale($("setup-reward-scale").value);
   const maxEarn = Math.max(0, parseInt($("setup-max-earn").value, 10) || 0);
   const autostart = $("setup-autostart").checked;
 
@@ -456,11 +507,11 @@ $("btn-setup-save").addEventListener("click", async () => {
       pin,
       unlockTime,
       grantMinutes,
-      secondsPerHit: secondsPerHitVal,
+      rewardScale: rewardScaleVal,
       maxEarnMinutesPerDay: maxEarn,
       autostart,
     });
-    secondsPerHit = secondsPerHitVal;
+    rewardScale = rewardScaleVal;
     $("unlock-time").textContent = unlockTime;
     if (!hasTauri) mock.configured = true;
     resetToDefaultActions();
@@ -551,12 +602,16 @@ async function submitPin() {
 }
 
 // ---------- "Kjør for å tjene tid" (3D bilspill) ----------
-let secondsPerHit = 20; // = sekunder per mynt (samme config-felt som før)
+let rewardScale = 1;
+let selectedGameMode = "normal"; // "normal" | "bomb"
 let carRunner = null;
 let gameEarnedSeconds = 0;
+let runnerMode = null; // modus runneren ble bygget med
+let lastRunEnded = false;
 
 // Vedvarende spillerprofil: lommebok, oppgraderinger, lakk og kart
 let profile = loadProfile();
+selectedGameMode = profile.lastMode === "bomb" ? "bomb" : "normal";
 let shopDirty = false; // true når butikkvalg krever at runneren bygges på nytt
 
 const gamePanel = $("game-panel");
@@ -572,24 +627,125 @@ function updateWalletDisplays() {
 }
 updateWalletDisplays();
 
-$("btn-earn-time").addEventListener("click", async () => {
-  actionsDefault.hidden = true;
-  gamePanel.hidden = false;
-  gameError.hidden = true;
-  $("card").classList.add("game-active");
-  setGameImmersive(true);
-  await refreshGameBudgetLabel();
-  await startGame();
+$("btn-earn-time").addEventListener("click", () => {
+  openEarnGame();
 });
 
 $("btn-game-cash-out").addEventListener("click", cashOutGame);
 $("btn-game-retry").addEventListener("click", () => {
-  retryGame();
+  hideGameOver();
+  showModeSelect();
 });
+$("btn-game-over-garage")?.addEventListener("click", () => {
+  hideGameOver();
+  openGarageFromGame();
+});
+
+$("btn-mode-normal")?.addEventListener("click", () => startMode("normal"));
+$("btn-mode-bomb")?.addEventListener("click", () => startMode("bomb"));
+$("btn-mode-close")?.addEventListener("click", async () => {
+  hideModeSelect();
+  await cashOutGame();
+});
+
+function updateModeBestLabels() {
+  const best = profile.bestSurvival || { normal: 0, bomb: 0 };
+  const n = $("mode-best-normal");
+  const b = $("mode-best-bomb");
+  if (n) n.textContent = String(best.normal | 0);
+  if (b) b.textContent = String(best.bomb | 0);
+}
+
+function showModeSelect() {
+  hideGameOver();
+  updateModeBestLabels();
+  const el = $("car-mode-select");
+  if (el) el.hidden = false;
+}
+
+function hideModeSelect() {
+  const el = $("car-mode-select");
+  if (el) el.hidden = true;
+}
+
+async function startMode(mode) {
+  selectedGameMode = mode === "bomb" ? "bomb" : "normal";
+  profile.lastMode = selectedGameMode;
+  saveProfile(profile);
+  hideModeSelect();
+  // Bygg runner på nytt når modus endres
+  if (carRunner && runnerMode !== selectedGameMode) {
+    carRunner.dispose();
+    carRunner = null;
+  }
+  await startGame();
+}
+
+function openGarageFromGame() {
+  if (carRunner) carRunner.pause();
+  setGameImmersive(false);
+  gamePanel.hidden = true;
+  $("card").classList.remove("game-active");
+  $("card").classList.add("shop-active");
+  setGarageTab("cars");
+  renderShop();
+  shopPanel.hidden = false;
+  if (garageView) garageView.setActive(true);
+}
+
+function setBombHealthHud(health) {
+  const bar = $("car-bomb-bar");
+  const fill = $("car-bomb-fill");
+  if (!bar || !fill) return;
+  if (health == null) {
+    bar.hidden = true;
+    return;
+  }
+  bar.hidden = false;
+  const pct = Math.max(0, Math.min(1, health));
+  fill.style.transform = `scaleX(${pct})`;
+}
 
 $("btn-game-fullscreen").addEventListener("click", () => {
   setGameImmersive(!document.body.classList.contains("game-immersive"));
 });
+
+/** Åpne bilspillet for å tjene mer tid — fra låseskjerm eller HUD-pille. */
+async function openEarnGame() {
+  lockedView.hidden = false;
+  hudView.hidden = true;
+  document.body.classList.remove("mode-hud", "hud-urgent");
+
+  $("actions-default").hidden = true;
+  $("pin-panel").hidden = true;
+  $("granted-panel").hidden = true;
+  $("settings-gate").hidden = true;
+  $("settings-panel").hidden = true;
+  $("setup-panel").hidden = true;
+  $("shop-panel").hidden = true;
+  $("switch-menu").hidden = true;
+  $("card").classList.remove("settings-active", "shop-active", "setup-active");
+  $("card").classList.add("game-active");
+
+  gamePanel.hidden = false;
+  gameError.hidden = true;
+  setGameImmersive(true);
+
+  // Hold fullskjerm mens spillet er åpent (ellers synker tick-tråden
+  // tilbake til HUD-pille når det fortsatt er tid igjen).
+  if (hasTauri) {
+    try {
+      await invoke("begin_settings_ui");
+    } catch {
+      /* forhåndsvisning */
+    }
+  }
+
+  await refreshGameBudgetLabel();
+  gameEarnedSeconds = 0;
+  updateGameEarnedDisplay();
+  showModeSelect();
+}
 
 function setGameImmersive(on) {
   document.body.classList.toggle("game-immersive", on);
@@ -633,14 +789,16 @@ function updateGameStatsHud({ combo, coinsCollected }) {
 
 async function ensureCarRunner() {
   if (carRunner) {
-    carRunner.setSecondsPerCoin(secondsPerHit);
+    carRunner.setRewardScale(rewardScale);
     return carRunner;
   }
   try {
-    // Send alltid ferske profil-verdier (lakk, kart og oppgraderinger)
+    runnerMode = selectedGameMode;
     carRunner = createCarRunner($("car-game-canvas"), {
-      secondsPerCoin: secondsPerHit,
+      rewardScale,
+      mode: selectedGameMode,
       paint: getPaint(profile.selectedPaint).color,
+      car: getCar(profile.selectedCar),
       upgrades: { ...profile.upgrades },
       theme: getMap(profile.selectedMap).theme,
       onEarn: (seconds) => {
@@ -650,11 +808,11 @@ async function ensureCarRunner() {
       onComboBreak: () => {},
       onStatsUpdate: updateGameStatsHud,
       onCoinCollect: () => {
-        // Hver mynt går i lommeboka (i tillegg til opptjent tid)
         addCoins(profile, 1);
         saveProfile(profile);
         updateWalletDisplays();
       },
+      onBombHealth: setBombHealthHud,
       onQuestion: (question) => {
         const el = $("car-hud-question");
         const answersEl = $("car-hud-answers");
@@ -680,12 +838,11 @@ async function ensureCarRunner() {
         }
       },
       onShieldUsed: () => {
-        // Skjoldet ble brukt opp i spillet — fjern det fra profilen
         profile.upgrades.skjold = 0;
         saveProfile(profile);
       },
-      onGameOver: ({ reason }) => {
-        showGameOver(reason);
+      onGameOver: (payload) => {
+        showGameOver(payload);
       },
     });
     return carRunner;
@@ -700,26 +857,52 @@ function hideGameOver() {
   $("car-game-over").hidden = true;
 }
 
-function showGameOver(reason) {
+function showGameOver(payload = {}) {
+  const reason = payload.reason || "wrong";
+  const survivalSeconds = Math.max(0, Math.floor(payload.survivalSeconds || 0));
+  const coins = payload.coinsCollected | 0;
+  const mode = payload.mode === "bomb" ? "bomb" : "normal";
+
   const titles = {
     wrong: "Feil svar — ute!",
     miss: "Du kjørte forbi — ute!",
     crash: "Krasj — ute!",
+    bomb: "Bombe — bang!",
   };
   const descs = {
     wrong: "Kjør gjennom porten med riktig svar neste gang.",
-    miss: "Du må velge én av de fire svarene på veien.",
+    miss: "Du må velge én av de fire svarene på mållinjen.",
     crash: "Unngå bilene på motorveien mens du kjører.",
+    bomb: "Hold farten oppe for å holde bombehelsen høy.",
   };
+
+  // Overlevelsesbonus → skjermtid (én gang per runde)
+  const capped = Math.min(SURVIVAL_BONUS_CAP, survivalSeconds);
+  const bonus = Math.floor(capped * SURVIVAL_BONUS_RATE * rewardScale);
+  if (bonus > 0) {
+    gameEarnedSeconds += bonus;
+    updateGameEarnedDisplay();
+  }
+
+  recordBestSurvival(profile, mode, survivalSeconds);
+  saveProfile(profile);
+
   $("car-game-over-title").textContent = titles[reason] || "Runden er over";
   $("car-game-over-desc").textContent =
     descs[reason] || "Prøv igjen, eller bruk tiden du har opptjent.";
+  $("car-game-over-survival").textContent = `${survivalSeconds}s`;
+  $("car-game-over-score").textContent = String(survivalSeconds);
+  $("car-game-over-coins").textContent = String(coins);
+  $("car-game-over-bonus").textContent = `+${bonus}s`;
   $("car-game-over").hidden = false;
+  lastRunEnded = true;
 }
 
 async function startGame() {
   hideGameOver();
-  gameEarnedSeconds = 0;
+  hideModeSelect();
+  lastRunEnded = false;
+  setBombHealthHud(selectedGameMode === "bomb" ? 1 : null);
   updateGameEarnedDisplay();
   const runner = await ensureCarRunner();
   runner.start();
@@ -727,15 +910,16 @@ async function startGame() {
 
 async function retryGame() {
   hideGameOver();
-  // Behold opptjent tid fra tidligere runder i samme økt
-  const runner = await ensureCarRunner();
-  runner.start();
+  showModeSelect();
 }
 
 function stopGame() {
   hideGameOver();
+  hideModeSelect();
+  setBombHealthHud(null);
   if (carRunner) carRunner.stop();
   gameEarnedSeconds = 0;
+  lastRunEnded = false;
 }
 
 function updateGameEarnedDisplay() {
@@ -748,7 +932,10 @@ async function cashOutGame() {
   stopGame();
 
   if (earned < 60) {
-    resetToDefaultActions();
+    gamePanel.hidden = true;
+    $("card").classList.remove("game-active");
+    document.body.classList.remove("game-immersive");
+    await leaveGameOverlay();
     return;
   }
 
@@ -764,15 +951,38 @@ async function cashOutGame() {
         granted < minutes
           ? `${granted} minutt${granted === 1 ? "" : "er"} innvilget (dagens grense er nådd).`
           : `${granted} minutt${granted === 1 ? "" : "er"} innvilget — godt kjørt!`;
-      setTimeout(() => {
+      setTimeout(async () => {
+        // Frigi fullskjerm-hold etter bekreftelsen; synker til HUD ved gjenstående tid.
+        await leaveSettingsUi();
         goToHudAfterGrant();
       }, 900);
     } else {
-      resetToDefaultActions();
+      await leaveGameOverlay();
     }
   } catch (err) {
     gameError.hidden = false;
     gameError.textContent = String(err);
+  }
+}
+
+/** Etter spill uten ny tid: tilbake til HUD hvis det er tid igjen, ellers låseskjerm. */
+async function leaveGameOverlay() {
+  let remaining = 0;
+  try {
+    const status = await invoke("get_status");
+    remaining = Number(status.remainingSeconds) || 0;
+  } catch {
+    /* forhåndsvisning */
+  }
+
+  if (hasTauri) {
+    await leaveSettingsUi();
+  }
+
+  if (remaining > 0) {
+    showHudView(remaining);
+  } else {
+    resetToDefaultActions();
   }
 }
 
@@ -788,17 +998,11 @@ function markShopDirty() {
 }
 
 $("btn-open-shop").addEventListener("click", () => {
-  if (carRunner) carRunner.pause(); // spillet fortsetter der det slapp
-  setGameImmersive(false);
-  gamePanel.hidden = true;
-  $("card").classList.remove("game-active");
-  $("card").classList.add("shop-active");
-  setGarageTab("parts");
-  renderShop();
-  shopPanel.hidden = false;
+  openGarageFromGame();
 });
 
 $("btn-shop-back").addEventListener("click", async () => {
+  if (garageView) garageView.setActive(false);
   shopPanel.hidden = true;
   $("card").classList.remove("shop-active");
   $("card").classList.add("game-active");
@@ -806,23 +1010,27 @@ $("btn-shop-back").addEventListener("click", async () => {
   hideGameOver();
   setGameImmersive(true);
   if (shopDirty) {
-    // Noe ble kjøpt eller byttet: bygg runneren på nytt og start runden
-    // på nytt — opptjent tid (gameEarnedSeconds) beholdes.
     shopDirty = false;
-    const runner = await ensureCarRunner();
-    runner.start();
+    if (carRunner) {
+      carRunner.dispose();
+      carRunner = null;
+    }
+    showModeSelect();
+  } else if (lastRunEnded || !carRunner) {
+    showModeSelect();
   } else if (carRunner) {
     carRunner.resume();
   }
 });
 
-let garageTab = "parts";
+let garageTab = "cars";
 
 function setGarageTab(tab) {
   garageTab = tab;
   document.querySelectorAll(".garage-tab").forEach((btn) => {
     btn.classList.toggle("is-active", btn.dataset.tab === tab);
   });
+  $("shop-cars").hidden = tab !== "cars";
   $("shop-upgrades").hidden = tab !== "parts";
   $("shop-paints").hidden = tab !== "paint";
   $("shop-maps").hidden = tab !== "maps";
@@ -834,19 +1042,26 @@ document.querySelectorAll(".garage-tab").forEach((btn) => {
   });
 });
 
+// 3D-garasje: roterbar bil som oppdateres ved hvert valg
+let garageView = null;
+
 function updateGaragePreview() {
   const paint = getPaint(profile.selectedPaint);
+  const car = getCar(profile.selectedCar);
   const map = getMap(profile.selectedMap);
-  const body = $("garage-car-body");
-  if (body) {
-    body.setAttribute("fill", "#" + paint.color.toString(16).padStart(6, "0"));
-  }
-  $("garage-car-label").textContent = `${paint.name} · ${map.name}`;
+  if (!garageView) garageView = createGarageView($("garage-3d-canvas"));
+  garageView.update({
+    paint: paint.color,
+    style: car.style,
+    upgrades: profile.upgrades,
+  });
+  $("garage-car-label").textContent = `${car.name} · ${paint.name} · ${map.name}`;
 }
 
 function renderShop() {
   updateWalletDisplays();
   updateGaragePreview();
+  renderShopCars();
   renderShopUpgrades();
   renderShopPaints();
   renderShopMaps();
@@ -967,6 +1182,58 @@ function mapPreviewGradient(map) {
   return `linear-gradient(110deg, ${stops[0][1]}, ${mid}, ${end})`;
 }
 
+function renderShopCars() {
+  const wrap = $("shop-cars");
+  wrap.textContent = "";
+  wrap.className = "garage-shelf garage-maps";
+  for (const car of CARS) {
+    const owned = profile.ownedCars.includes(car.id);
+    const selected = profile.selectedCar === car.id;
+    const card = document.createElement("div");
+    card.className = "garage-map" + (selected ? " is-selected" : "");
+
+    const preview = document.createElement("div");
+    preview.className = "garage-map-preview garage-car-chip";
+    preview.textContent = car.name.slice(0, 1);
+
+    const name = document.createElement("p");
+    name.className = "garage-item-name";
+    name.textContent = car.name;
+
+    const desc = document.createElement("p");
+    desc.className = "garage-item-desc";
+    desc.textContent = car.description;
+
+    let btn;
+    if (selected) {
+      btn = makeActionBtn("I garasjen", { outline: true, disabled: true });
+    } else if (owned) {
+      btn = makeActionBtn("Velg", {
+        onClick: () => {
+          profile.selectedCar = car.id;
+          saveProfile(profile);
+          markShopDirty();
+          renderShop();
+        },
+      });
+    } else {
+      btn = makeActionBtn(`${car.price} ◆`, {
+        disabled: profile.coins < car.price,
+        onClick: () => {
+          if (!purchase(profile, car.price)) return;
+          profile.ownedCars.push(car.id);
+          profile.selectedCar = car.id;
+          saveProfile(profile);
+          markShopDirty();
+          renderShop();
+        },
+      });
+    }
+    card.append(preview, name, desc, btn);
+    wrap.appendChild(card);
+  }
+}
+
 function renderShopMaps() {
   const wrap = $("shop-maps");
   wrap.textContent = "";
@@ -1025,6 +1292,41 @@ const settingsPanel = $("settings-panel");
 const settingsPinInput = $("settings-pin-input");
 const settingsPinError = $("settings-pin-error");
 let pendingSettingsPin = "";
+let settingsTab = "time";
+const SETTINGS_TABS = ["time", "pin", "windows", "about"];
+
+function setSettingsTab(tab) {
+  if (!SETTINGS_TABS.includes(tab)) tab = "time";
+  settingsTab = tab;
+  document.querySelectorAll(".settings-nav-item").forEach((btn) => {
+    const active = btn.dataset.settingsTab === tab;
+    btn.classList.toggle("is-active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+    btn.tabIndex = active ? 0 : -1;
+  });
+  document.querySelectorAll(".settings-pane").forEach((pane) => {
+    pane.hidden = pane.id !== `settings-pane-${tab}`;
+  });
+}
+
+document.querySelectorAll(".settings-nav-item").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    setSettingsTab(btn.dataset.settingsTab);
+  });
+  btn.addEventListener("keydown", (e) => {
+    const idx = SETTINGS_TABS.indexOf(btn.dataset.settingsTab);
+    if (idx < 0) return;
+    let next = -1;
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") next = (idx + 1) % SETTINGS_TABS.length;
+    if (e.key === "ArrowUp" || e.key === "ArrowLeft") next = (idx - 1 + SETTINGS_TABS.length) % SETTINGS_TABS.length;
+    if (e.key === "Home") next = 0;
+    if (e.key === "End") next = SETTINGS_TABS.length - 1;
+    if (next < 0) return;
+    e.preventDefault();
+    setSettingsTab(SETTINGS_TABS[next]);
+    document.querySelector(`.settings-nav-item[data-settings-tab="${SETTINGS_TABS[next]}"]`)?.focus();
+  });
+});
 
 async function requestOpenSettings() {
   if (document.body.classList.contains("setup-mode")) return;
@@ -1106,7 +1408,9 @@ async function openSettingsPanel() {
   const settings = await invoke("get_settings_public");
   $("set-unlock-time").value = settings.unlockTime;
   $("set-grant-minutes").value = settings.grantMinutes;
-  $("set-seconds-per-hit").value = settings.secondsPerHit;
+  $("set-reward-scale").value = clampRewardScale(
+    settings.rewardScale ?? ((settings.secondsPerHit ?? 20) / 20)
+  );
   $("set-max-earn").value = settings.maxEarnMinutesPerDay;
   $("set-new-pin").value = "";
   $("set-confirm-pin").value = "";
@@ -1114,6 +1418,7 @@ async function openSettingsPanel() {
   applyHudHotkeyLabel(settings.hudHotkey);
   $("settings-save-error").hidden = true;
   $("settings-save-ok").hidden = true;
+  setSettingsTab("time");
   settingsPanel.hidden = false;
   $("card").classList.add("settings-active");
   await refreshUpdateStatus();
@@ -1248,6 +1553,10 @@ $("btn-settings-cancel").addEventListener("click", async () => {
   await leaveSettingsUi();
 });
 
+$("btn-settings-nav-close").addEventListener("click", () => {
+  $("btn-settings-cancel").click();
+});
+
 const hudHotkeyInput = $("set-hud-hotkey");
 let hudHotkeyCapturing = false;
 let hudHotkeyCommitted = false;
@@ -1336,7 +1645,7 @@ $("btn-settings-save").addEventListener("click", async () => {
 
   const unlockTime = $("set-unlock-time").value.trim() || "07:00";
   const grantMinutes = Math.max(1, parseInt($("set-grant-minutes").value, 10) || 1);
-  const secondsPerHitVal = Math.max(1, parseInt($("set-seconds-per-hit").value, 10) || 1);
+  const rewardScaleVal = clampRewardScale($("set-reward-scale").value);
   const maxEarn = Math.max(0, parseInt($("set-max-earn").value, 10) || 0);
   const newPin = $("set-new-pin").value.trim();
   const confirmPin = $("set-confirm-pin").value.trim();
@@ -1367,12 +1676,13 @@ $("btn-settings-save").addEventListener("click", async () => {
       newPin: newPin ? newPin : null,
       unlockTime,
       grantMinutes,
-      secondsPerHit: secondsPerHitVal,
+      rewardScale: rewardScaleVal,
       maxEarnMinutesPerDay: maxEarn,
       autostart,
       hudHotkey,
     });
-    secondsPerHit = secondsPerHitVal;
+    rewardScale = rewardScaleVal;
+    if (carRunner) carRunner.setRewardScale(rewardScale);
     $("unlock-time").textContent = unlockTime;
     applyHudHotkeyLabel(hudHotkey);
     if (newPin) {
@@ -1390,3 +1700,7 @@ $("btn-settings-save").addEventListener("click", async () => {
     saveError.textContent = String(err);
   }
 });
+
+// Belønningsskala: live hint i oppsett og innstillinger
+syncRewardScaleHint("setup-reward-scale", "setup-reward-scale-hint");
+syncRewardScaleHint("set-reward-scale", "set-reward-scale-hint");

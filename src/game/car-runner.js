@@ -3,9 +3,17 @@
 // Fire filer, matte hver 2. bølge (1–12-gangen), fire svarporter på veien.
 // Feil svar / miss / krasj avslutter runden. Trafikk mellom oppgavene.
 // Kart-temaer, lakk, oppgraderinger (turbo/magnet/skjold).
-// 100 % prosedyrelt — ingen eksterne modeller, ingen lyd.
+// 100 % prosedyrelt — modellene kommer fra src/3dassets/models.js.
 // =====================================================================
 import * as THREE from "../vendor/three.module.min.js";
+import {
+  createPlayerCar, createShieldKit,
+  createTrafficCar, createTrafficVan, createTrafficBus, createTrafficTruck,
+  createCoin, createBarrier, createAnswerSign, createFinishLine, createQuestionPlate,
+  createTree, createCactus, createPalm, createStreetLight,
+  disposeModel,
+} from "../3dassets/models.js";
+import { createEffects } from "./effects.js";
 
 // ---------- Konstanter — Highway Times Tables-stil ----------
 // Fire filer (fire svaralternativer), matte hver annen bølge,
@@ -27,12 +35,17 @@ const QUESTION_EVERY = 2; // hver 2. bølge = matte (som Highway)
 const QUESTION_BONUS_COINS = 4; // bonus for riktig svar
 const TABLE_MAX = 12; // 1–12-gangen som Highway Times Tables
 const QUESTION_APPROACH_SLOW = 0.72; // litt saktere når oppgave er aktiv
+const HOVER_Z = -22; // skilt svever her til mållinjen låser dem
+const BASE_SECONDS_PER_COIN = 10; // fast base; skaleres med rewardScale
+const SURVIVAL_END_DELAY = 0.75; // VFX før resulteskjerm
+const BOMB_REGEN = 0.12;
+const BOMB_DRAIN_SLOW = 0.25;
+const BOMB_DRAIN_MID = 0.06;
 
 // Palett: ZeBeyond-tema
 const COLOR_BG = 0x030504;
 const COLOR_MINT = 0x38e6ac;
 const COLOR_CYAN = 0x6efdff;
-const COLOR_COIN = 0xffc94a;
 
 // Standardtema = Nattbyen (dagens utseende). Må samsvare med "nattby"
 // i shop-data.js — brukes når opts.theme ikke er sendt inn.
@@ -88,28 +101,6 @@ function makeAsphaltTexture() {
   return tex;
 }
 
-function makeStripeTexture() {
-  const c = document.createElement("canvas");
-  c.width = 128;
-  c.height = 64;
-  const ctx = c.getContext("2d");
-  ctx.fillStyle = "#e8e4dc";
-  ctx.fillRect(0, 0, 128, 64);
-  ctx.fillStyle = "#e2483d";
-  for (let x = -64; x < 160; x += 40) {
-    ctx.beginPath();
-    ctx.moveTo(x, 64);
-    ctx.lineTo(x + 24, 0);
-    ctx.lineTo(x + 44, 0);
-    ctx.lineTo(x + 20, 64);
-    ctx.closePath();
-    ctx.fill();
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = THREE.RepeatWrapping;
-  return tex;
-}
-
 function makeSkyTexture(stops) {
   const c = document.createElement("canvas");
   c.width = 4;
@@ -120,36 +111,6 @@ function makeSkyTexture(stops) {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 4, 512);
   const tex = new THREE.CanvasTexture(c);
-  return tex;
-}
-
-// Svar-sirkel på veien (som Highway Times Tables): hvit ring + tall.
-function makeSignTexture(value) {
-  const c = document.createElement("canvas");
-  c.width = 256;
-  c.height = 256;
-  const ctx = c.getContext("2d");
-  ctx.clearRect(0, 0, 256, 256);
-  // Ytre hvit ring
-  ctx.beginPath();
-  ctx.arc(128, 128, 118, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(255,255,255,0.92)";
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(128, 128, 100, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(255,255,255,0.35)";
-  ctx.fill();
-  // Tall
-  ctx.fillStyle = "#111111";
-  const text = String(value);
-  ctx.font = text.length >= 3
-    ? "bold 78px Arial Black, Impact, sans-serif"
-    : "bold 100px Arial Black, Impact, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, 128, 136);
-  const tex = new THREE.CanvasTexture(c);
-  tex.premultiplyAlpha = false;
   return tex;
 }
 
@@ -188,7 +149,9 @@ function makeAnswers(a, b) {
 
 export function createCarRunner(canvas, options = {}) {
   const opts = {
-    secondsPerCoin: 20,
+    rewardScale: 1,
+    secondsPerCoin: null, // legacy; brukes bare hvis rewardScale mangler
+    mode: "normal", // "normal" | "bomb"
     paint: COLOR_MINT,
     upgrades: null,
     theme: null,
@@ -199,20 +162,39 @@ export function createCarRunner(canvas, options = {}) {
     onQuestion: () => {},
     onCoinCollect: () => {},
     onShieldUsed: () => {},
+    onBombHealth: () => {},
     onGameOver: () => {},
     ...options,
   };
+
+  let rewardScale = Math.min(2, Math.max(0.5, Number(opts.rewardScale) || 1));
+  // Bakoverkompatibilitet hvis noen fortsatt sender secondsPerCoin
+  if (opts.secondsPerCoin != null && options.rewardScale == null) {
+    rewardScale = Math.min(2, Math.max(0.5, (opts.secondsPerCoin | 0) / 20));
+  }
+  function secondsPerCoin() {
+    return BASE_SECONDS_PER_COIN * rewardScale;
+  }
+
+  const gameMode = opts.mode === "bomb" ? "bomb" : "normal";
+  const bombMode = gameMode === "bomb";
 
   const theme = { ...DEFAULT_THEME, ...(opts.theme || {}) };
   const upgrades = { turbo: 0, magnet: 0, skjold: 0, ...(opts.upgrades || {}) };
   const paintColor = opts.paint ?? COLOR_MINT;
 
+  // Bil-fordeler fra garasjen (opts.car = getCar(profile.selectedCar)):
+  // turboBonus/magnetBonus legges oppå kjøpte nivåer, freeShield gir
+  // gratis skjold hver runde, style styrer karosseriet.
+  const carStyle = opts.car?.style || "sport";
+  const carPerk = opts.car?.perk || {};
+
   // Oppgraderingseffekter
-  const turboLevel = Math.max(0, Math.min(3, upgrades.turbo | 0));
+  const turboLevel = Math.max(0, Math.min(3, (upgrades.turbo | 0) + (carPerk.turboBonus || 0)));
   const speedScale = 1 + turboLevel * 0.1; // +10 % toppfart og aks per nivå
   const baseSpeed = BASE_SPEED * speedScale;
   const maxSpeed = MAX_SPEED * speedScale;
-  const magnetLevel = Math.max(0, Math.min(2, upgrades.magnet | 0));
+  const magnetLevel = Math.max(0, Math.min(2, Math.max(upgrades.magnet | 0, carPerk.magnetBonus || 0)));
   const magnetRange = magnetLevel >= 2 ? 42 : 24; // z-avstand der magneten fanger
   const magnetPull = magnetLevel >= 2 ? 11 : 6.5; // sideveis hastighet (enheter/s)
 
@@ -274,6 +256,17 @@ export function createCarRunner(canvas, options = {}) {
   camera.position.set(0, 9.5, 11.5);
   camera.lookAt(0, 0, -18);
 
+  const fxOverlay = typeof document !== "undefined"
+    ? document.getElementById("car-fx-overlay")
+    : null;
+  const effects = createEffects({
+    scene,
+    camera,
+    overlayEl: fxOverlay,
+    lowGraphics,
+  });
+  disposables.push({ dispose: () => effects.dispose() });
+
   // ---------- Lys (farger og styrke fra kart-temaet) ----------
   scene.add(new THREE.AmbientLight(theme.ambientColor, theme.ambientIntensity));
   const hemi = new THREE.HemisphereLight(theme.hemiSky, theme.hemiGround, theme.hemiIntensity);
@@ -322,72 +315,37 @@ export function createCarRunner(canvas, options = {}) {
   const railBarGeo = track(new THREE.BoxGeometry(0.07, 0.16, SEGMENT_LENGTH));
   const railMat = track(new THREE.MeshStandardMaterial({ color: theme.railColor, metalness: 0.85, roughness: 0.35 }));
 
-  const trunkGeo = track(new THREE.CylinderGeometry(0.09, 0.14, 1.1, 6));
-  const trunkMat = track(new THREE.MeshStandardMaterial({ color: theme.trunkColor, roughness: 1 }));
-  const foliageGeo = track(new THREE.ConeGeometry(0.85, 2.2, 7));
-  const foliageMat = track(new THREE.MeshStandardMaterial({ color: theme.foliageColor, roughness: 0.95 }));
-  const cactusGeo = track(new THREE.CylinderGeometry(0.2, 0.26, 1.9, 8));
-  const cactusArmGeo = track(new THREE.SphereGeometry(0.3, 8, 6));
-  const palmTrunkGeo = track(new THREE.CylinderGeometry(0.07, 0.13, 2.6, 6));
-  const palmLeafGeo = track(new THREE.SphereGeometry(0.7, 8, 5));
-
-  const poleGeo = track(new THREE.CylinderGeometry(0.06, 0.08, 3.6, 8));
-  const armGeo = track(new THREE.BoxGeometry(0.07, 0.07, 1.1));
-  const poleMat = track(new THREE.MeshStandardMaterial({ color: 0x3a4440, metalness: 0.7, roughness: 0.4 }));
-  const lampGeo = track(new THREE.SphereGeometry(0.13, 10, 8));
-  const lampMat = track(new THREE.MeshStandardMaterial({ color: theme.lampColor, emissive: theme.lampEmissive, emissiveIntensity: 2.4 }));
-
-  // Veidekor per kart-tema: tre/snøtre (kjegle), kaktus (sylinder+kuler)
-  // eller palme (stamme med flate bladkuler). Farger kommer fra temaet.
+  // Veidekor per kart-tema: tre/snøtre, kaktus eller palme — modeller
+  // fra 3dassets, fargene kommer fra temaet.
   function makeScenery(x, z, scale) {
-    const g = new THREE.Group();
+    let g;
     if (theme.scenery === "kaktus") {
-      const body = new THREE.Mesh(cactusGeo, foliageMat);
-      body.position.y = 0.95;
-      body.castShadow = true;
-      const armL = new THREE.Mesh(cactusArmGeo, foliageMat);
-      armL.position.set(-0.34, 1.15, 0);
-      armL.scale.set(1, 1.5, 1);
-      const armR = new THREE.Mesh(cactusArmGeo, foliageMat);
-      armR.position.set(0.36, 0.85, 0);
-      armR.scale.set(1, 1.3, 1);
-      g.add(body, armL, armR);
+      g = createCactus({ foliageColor: theme.foliageColor });
     } else if (theme.scenery === "palme") {
-      const trunk = new THREE.Mesh(palmTrunkGeo, trunkMat);
-      trunk.position.y = 1.3;
-      trunk.rotation.z = 0.12;
-      trunk.castShadow = true;
-      g.add(trunk);
-      for (let i = 0; i < 4; i++) {
-        const leaf = new THREE.Mesh(palmLeafGeo, foliageMat);
-        leaf.scale.set(1.5, 0.28, 0.55);
-        leaf.position.set(Math.cos(i * Math.PI / 2) * 0.55, 2.6, Math.sin(i * Math.PI / 2) * 0.55);
-        leaf.rotation.y = i * Math.PI / 2;
-        g.add(leaf);
-      }
+      g = createPalm({ trunkColor: theme.trunkColor, foliageColor: theme.foliageColor });
     } else {
-      // "tre" og "snøtre": samme form, fargen (grønn/hvit) styres av temaet
-      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-      trunk.position.y = 0.55;
-      const top = new THREE.Mesh(foliageGeo, foliageMat);
-      top.position.y = 1.9;
-      top.castShadow = true;
-      g.add(trunk, top);
+      // "tre" og "snøtre": samme form, snø på de øvre lagene ved "snøtre"
+      g = createTree({
+        trunkColor: theme.trunkColor,
+        foliageColor: theme.foliageColor,
+        snow: theme.scenery === "snøtre",
+      });
     }
     g.position.set(x, 0, z);
     g.scale.setScalar(scale);
     return g;
   }
 
-  function makeStreetLight(side, z) {
-    const g = new THREE.Group();
-    const pole = new THREE.Mesh(poleGeo, poleMat);
-    pole.position.y = 1.8;
-    const arm = new THREE.Mesh(armGeo, poleMat);
-    arm.position.set(0, 3.55, side * -0.5);
-    const lamp = new THREE.Mesh(lampGeo, lampMat);
-    lamp.position.set(0, 3.5, side * -0.95);
-    g.add(pole, arm, lamp);
+  // Gatelys: modell fra 3dassets. Armen peker innover veien, og bare
+  // noen av stolpene har ekte spotlight slått på (ytelse).
+  function makeStreetLight(side, z, withLight) {
+    const g = createStreetLight({
+      lampColor: theme.lampColor,
+      lampEmissive: theme.lampEmissive,
+      withLight,
+    });
+    // Modellens arm peker mot -z — roter slik at den peker mot veisenter
+    g.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
     g.position.set(side * (ROAD_WIDTH / 2 + 0.9), 0, z);
     return g;
   }
@@ -439,7 +397,8 @@ export function createCarRunner(canvas, options = {}) {
       }
     }
     if (i % 2 === 0) {
-      scenery.add(makeStreetLight(i % 4 === 0 ? -1 : 1, 0));
+      // Ekte spotlight bare på annethvert gatelys (og aldri i lavgrafikk)
+      scenery.add(makeStreetLight(i % 4 === 0 ? -1 : 1, 0, !lowGraphics && i % 4 === 0));
     }
     const treeCount = 1 + (i % 2);
     for (let t = 0; t < treeCount; t++) {
@@ -457,70 +416,11 @@ export function createCarRunner(canvas, options = {}) {
     roadSegments.push(seg);
   }
 
-  // ---------- Bil: ekte silhuett via ExtrudeGeometry ----------
-  const car = new THREE.Group();
-
-  // Sideprofil i (x = lengderetning, y = høyde). Front peker mot -x her,
-  // roteres så front peker mot -z i verden.
-  const profile = new THREE.Shape();
-  profile.moveTo(-1.15, 0.16);        // bak, nederst
-  profile.lineTo(1.05, 0.16);         // front, nederst
-  profile.lineTo(1.18, 0.34);         // støtfanger
-  profile.lineTo(1.05, 0.52);         // over grillen
-  profile.lineTo(0.38, 0.6);          // panser
-  profile.lineTo(0.05, 0.95);         // frontrute
-  profile.lineTo(-0.52, 0.97);        // tak
-  profile.lineTo(-0.88, 0.62);        // bakrute
-  profile.lineTo(-1.18, 0.55);        // bagasjelokk
-  profile.lineTo(-1.15, 0.16);
-  const bodyGeo = track(new THREE.ExtrudeGeometry(profile, { depth: 1.15, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 2 }));
-  bodyGeo.translate(0, 0, -0.575);
-  const bodyMat = track(new THREE.MeshPhysicalMaterial({
-    color: paintColor, // lakken velges i garasjen (opts.paint)
-    metalness: 0.65,
-    roughness: 0.28,
-    clearcoat: 0.8,
-    clearcoatRoughness: 0.15,
-    emissive: paintColor,
-    emissiveIntensity: 0.04,
-  }));
-  const body = new THREE.Mesh(bodyGeo, bodyMat);
-  body.rotation.y = -Math.PI / 2; // profilens +x (front) -> verdens -z
-  body.castShadow = true;
-  car.add(body);
-
-  // Vinduer: mørkt glass, litt innfelt
-  const glassMat = track(new THREE.MeshPhysicalMaterial({ color: 0x0a1418, metalness: 0.9, roughness: 0.08, envMapIntensity: 1.2 }));
-  const windshield = new THREE.Mesh(track(new THREE.BoxGeometry(1.02, 0.34, 0.06)), glassMat);
-  windshield.position.set(0, 0.78, -0.22);
-  windshield.rotation.x = -0.72;
-  car.add(windshield);
-  const rearWindow = new THREE.Mesh(track(new THREE.BoxGeometry(1.0, 0.3, 0.05)), glassMat);
-  rearWindow.position.set(0, 0.78, 0.68);
-  rearWindow.rotation.x = 0.8;
-  car.add(rearWindow);
-  const sideGlassGeo = track(new THREE.BoxGeometry(0.04, 0.24, 0.85));
-  for (const sx of [-0.57, 0.57]) {
-    const side = new THREE.Mesh(sideGlassGeo, glassMat);
-    side.position.set(sx, 0.75, 0.2);
-    car.add(side);
-  }
-
-  // Frontlykter (hvit-cyan) og baklykter (røde)
-  const headMat = track(new THREE.MeshStandardMaterial({ color: 0xf4ffff, emissive: 0xd8fbff, emissiveIntensity: 3.2 }));
-  const headGeo = track(new THREE.SphereGeometry(0.085, 10, 8));
-  for (const sx of [-0.38, 0.38]) {
-    const lamp = new THREE.Mesh(headGeo, headMat);
-    lamp.position.set(sx, 0.42, -1.16);
-    car.add(lamp);
-  }
-  const tailMat = track(new THREE.MeshStandardMaterial({ color: 0xff5348, emissive: 0xff2a20, emissiveIntensity: 2.6 }));
-  const tailGeo = track(new THREE.BoxGeometry(0.26, 0.08, 0.05));
-  for (const sx of [-0.36, 0.36]) {
-    const lamp = new THREE.Mesh(tailGeo, tailMat);
-    lamp.position.set(sx, 0.52, 1.17);
-    car.add(lamp);
-  }
+  // ---------- Bil: modell fra 3dassets ----------
+  const car = createPlayerCar({ paint: paintColor, turbo: turboLevel, magnet: magnetLevel, style: carStyle });
+  const bodyMat = car.userData.paintMaterial; // lakken blinker grønn/rød ved svar
+  const wheels = car.userData.wheels;         // spinnes i loopen
+  scene.add(car);
 
   // Frontlys som faktisk lyser opp veien (hoppes over i lavgrafikk)
   let headlight = null;
@@ -532,275 +432,48 @@ export function createCarRunner(canvas, options = {}) {
     car.add(headlight.target);
   }
 
-  // Hjul: dekk (torus) + felg (sylinder)
-  const tireGeo = track(new THREE.TorusGeometry(0.21, 0.09, 10, 18));
-  const tireMat = track(new THREE.MeshStandardMaterial({ color: 0x0b0d0c, roughness: 0.95 }));
-  const rimGeo = track(new THREE.CylinderGeometry(0.13, 0.13, 0.12, 12));
-  const rimMat = track(new THREE.MeshStandardMaterial({ color: 0xbfd8cf, metalness: 0.9, roughness: 0.25 }));
-  const wheels = [];
-  for (const [wx, wz] of [[-0.62, 0.72], [0.62, 0.72], [-0.62, -0.72], [0.62, -0.72]]) {
-    const wheel = new THREE.Group();
-    const tire = new THREE.Mesh(tireGeo, tireMat);
-    tire.rotation.y = Math.PI / 2;
-    const rimMesh = new THREE.Mesh(rimGeo, rimMat);
-    rimMesh.rotation.z = Math.PI / 2;
-    wheel.add(tire, rimMesh);
-    wheel.position.set(wx, 0.3, wz);
-    wheel.castShadow = true;
-    car.add(wheel);
-    wheels.push(wheel);
-  }
-  scene.add(car);
-
   // ---------- Synlige oppgraderinger på bilen ----------
-  // Turbo: spoiler (synlig oppgradering) + eksosflammer
-  const turboFlames = [];
-  if (turboLevel > 0) {
-    const spoilerMat = track(new THREE.MeshStandardMaterial({
-      color: 0x1a1e1c, metalness: 0.5, roughness: 0.4,
-    }));
-    const spoiler = new THREE.Mesh(track(new THREE.BoxGeometry(1.05, 0.08, 0.28)), spoilerMat);
-    spoiler.position.set(0, 0.98, 0.95);
-    car.add(spoiler);
-    const spoilerStemL = new THREE.Mesh(track(new THREE.BoxGeometry(0.06, 0.22, 0.06)), spoilerMat);
-    spoilerStemL.position.set(-0.35, 0.86, 0.95);
-    const spoilerStemR = spoilerStemL.clone();
-    spoilerStemR.position.x = 0.35;
-    car.add(spoilerStemL, spoilerStemR);
+  // Turbo-flammene sitter på modellen og pulseres i loopen (som før)
+  const turboFlames = car.userData.flames || [];
 
-    const pipeMat = track(new THREE.MeshStandardMaterial({
-      color: 0x2a2e2c, metalness: 0.85, roughness: 0.3,
-    }));
-    const pipeGeo = track(new THREE.CylinderGeometry(0.07, 0.09, 0.35, 8));
-    for (const sx of [-0.28, 0.28]) {
-      const pipe = new THREE.Mesh(pipeGeo, pipeMat);
-      pipe.rotation.x = Math.PI / 2;
-      pipe.position.set(sx, 0.28, 1.28);
-      car.add(pipe);
-    }
-    const flameMat = track(new THREE.MeshBasicMaterial({
-      color: 0xff6a20,
-      transparent: true,
-      opacity: 0.85,
-    }));
-    for (let i = 0; i < turboLevel; i++) {
-      for (const sx of [-0.28, 0.28]) {
-        const flame = new THREE.Mesh(
-          track(new THREE.ConeGeometry(0.08 + i * 0.02, 0.35 + i * 0.12, 6)),
-          flameMat
-        );
-        flame.rotation.x = -Math.PI / 2;
-        flame.position.set(sx, 0.28, 1.45 + i * 0.12);
-        car.add(flame);
-        turboFlames.push(flame);
-      }
-    }
-  }
-
-  // Magnet: synlige magnetskiver på sidene
-  if (magnetLevel > 0) {
-    const magMat = track(new THREE.MeshStandardMaterial({
-      color: 0x2a6dff,
-      emissive: 0x3d7be2,
-      emissiveIntensity: 1.4 + magnetLevel * 0.6,
-      metalness: 0.7,
-      roughness: 0.25,
-    }));
-    const magGeo = track(new THREE.CylinderGeometry(0.16, 0.16, 0.08, 16));
-    const coreMat = track(new THREE.MeshStandardMaterial({
-      color: 0xe2483d,
-      emissive: 0xff3344,
-      emissiveIntensity: 1.2,
-    }));
-    for (const sx of [-0.72, 0.72]) {
-      const mag = new THREE.Mesh(magGeo, magMat);
-      mag.rotation.z = Math.PI / 2;
-      mag.position.set(sx, 0.55, 0.05);
-      car.add(mag);
-      const core = new THREE.Mesh(track(new THREE.SphereGeometry(0.06, 8, 8)), coreMat);
-      core.position.set(sx * 1.02, 0.55, 0.05);
-      car.add(core);
-    }
-    if (magnetLevel >= 2) {
-      const halo = new THREE.Mesh(
-        track(new THREE.TorusGeometry(0.95, 0.035, 8, 28)),
-        track(new THREE.MeshBasicMaterial({
-          color: 0x6efdff,
-          transparent: true,
-          opacity: 0.55,
-        }))
-      );
-      halo.rotation.x = Math.PI / 2;
-      halo.position.y = 0.35;
-      car.add(halo);
-    }
-  }
-
-  // Skjold: tydelig cyan ring + kuppel rundt bilen
-  let shieldActive = upgrades.skjold > 0;
-  const shieldRing = new THREE.Mesh(
-    track(new THREE.TorusGeometry(1.35, 0.07, 10, 40)),
-    track(new THREE.MeshBasicMaterial({ color: COLOR_CYAN, transparent: true, opacity: 0.85 }))
-  );
-  shieldRing.position.y = 0.55;
-  shieldRing.rotation.x = 0.15;
+  // Skjold: tydelig cyan ring + kuppel rundt bilen. Bygges alltid,
+  // styres med visible slik at den kan brukes opp midt i en runde.
+  // Skjold kommer enten fra kjøpt oppgradering eller bilens freeShield-fordel.
+  const shieldKit = createShieldKit();
+  let shieldActive = upgrades.skjold > 0 || carPerk.freeShield === true;
+  const shieldRing = shieldKit.userData.ring;
+  const shieldDome = shieldKit.userData.dome;
   shieldRing.visible = shieldActive;
-  car.add(shieldRing);
-  const shieldDome = new THREE.Mesh(
-    track(new THREE.SphereGeometry(1.15, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.55)),
-    track(new THREE.MeshBasicMaterial({
-      color: COLOR_CYAN,
-      transparent: true,
-      opacity: 0.2,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    }))
-  );
-  shieldDome.position.y = 0.35;
   shieldDome.visible = shieldActive;
-  car.add(shieldDome);
+  car.add(shieldKit);
 
-  // ---------- Mynter og hindringer ----------
-  // Mynt: gullsylinder som en ekte mynt, står på høykant og spinner
-  const coinGeo = track(new THREE.CylinderGeometry(0.44, 0.44, 0.09, 24));
-  const coinMat = track(new THREE.MeshPhysicalMaterial({
-    color: COLOR_COIN,
-    metalness: 0.95,
-    roughness: 0.22,
-    emissive: 0x9a6a10,
-    emissiveIntensity: 0.5,
-  }));
-  const coinRingGeo = track(new THREE.TorusGeometry(0.44, 0.045, 8, 26));
-
-  // Hindring: stripet trafikksperring på bein
-  const stripeTex = track(makeStripeTexture());
-  const barrierMat = track(new THREE.MeshStandardMaterial({ map: stripeTex, roughness: 0.6 }));
-  const barrierPlainMat = track(new THREE.MeshStandardMaterial({ color: 0xd9d5cc, roughness: 0.6 }));
-  const barrierGeo = track(new THREE.BoxGeometry(1.5, 0.42, 0.22));
-  const legGeo = track(new THREE.BoxGeometry(0.1, 0.5, 0.34));
-  const legMat = track(new THREE.MeshStandardMaterial({ color: 0x494f4c, metalness: 0.5, roughness: 0.5 }));
-  const barrierLightGeo = track(new THREE.SphereGeometry(0.06, 8, 6));
-  const barrierLightMat = track(new THREE.MeshStandardMaterial({ color: 0xffb02e, emissive: 0xff9500, emissiveIntensity: 3 }));
-
-  // Svar-porter: hvite sirkler som svever over hver fil (Highway Times Tables-stil).
-  // Du kjører GJENNOM sirkelen med riktig tall.
-  const signDiscGeo = track(new THREE.CircleGeometry(0.95, 32));
-  const signFaceMats = new Map();
-
-  function getSignFaceMat(value) {
-    let mat = signFaceMats.get(value);
-    if (!mat) {
-      mat = track(new THREE.MeshBasicMaterial({
-        map: track(makeSignTexture(value)),
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      }));
-      signFaceMats.set(value, mat);
-    }
-    return mat;
+  // ---------- Mynter, hindringer og skilt: modeller fra 3dassets ----------
+  // Fjerning av spawnede modeller må også frigjøre geometri/materialer.
+  function removeWorldObject(obj) {
+    scene.remove(obj.mesh);
+    disposeModel(obj.mesh);
   }
 
   function makeSign(value) {
-    const g = new THREE.Group();
-    const disc = new THREE.Mesh(signDiscGeo, getSignFaceMat(value));
-    // Stå nesten opp-ned mot kamera (litt tippet bakover som i videoen)
-    disc.rotation.x = -0.35;
-    disc.position.y = 1.15;
-    disc.name = "signFace";
-    g.add(disc);
-    // Myk skygge/glød på asfalten under
-    const glow = new THREE.Mesh(
-      track(new THREE.CircleGeometry(0.7, 20)),
-      track(new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.18,
-        depthWrite: false,
-      }))
-    );
-    glow.rotation.x = -Math.PI / 2;
-    glow.position.y = 0.03;
-    g.add(glow);
-    return g;
+    return createAnswerSign(value);
   }
 
   function makeCoin() {
-    const g = new THREE.Group();
-    const disc = new THREE.Mesh(coinGeo, coinMat);
-    disc.rotation.x = Math.PI / 2; // stå på høykant, flate mot spilleren
-    const ring = new THREE.Mesh(coinRingGeo, coinMat);
-    g.add(disc, ring);
-    g.castShadow = true;
-    disc.castShadow = true;
-    return g;
+    return createCoin();
   }
 
   function makeBarrier() {
-    const g = new THREE.Group();
-    const board = new THREE.Mesh(barrierGeo, [
-      barrierPlainMat, barrierPlainMat, // sider
-      barrierPlainMat, barrierPlainMat, // topp/bunn
-      barrierMat, barrierMat,           // front/bak: striper
-    ]);
-    board.position.y = 0.62;
-    board.castShadow = true;
-    for (const lx of [-0.58, 0.58]) {
-      const leg = new THREE.Mesh(legGeo, legMat);
-      leg.position.set(lx, 0.25, 0);
-      g.add(leg);
-    }
-    const warnLight = new THREE.Mesh(barrierLightGeo, barrierLightMat);
-    warnLight.position.set(0, 0.9, 0);
-    g.add(board, warnLight);
-    return g;
+    return createBarrier();
   }
 
-  // Trafikk: bil / varebil / buss (som i Highway Times Tables)
+  // Trafikk: bil / varebil / buss / lastebil (modeller fra 3dassets)
   const trafficColors = [0xe2483d, 0x3d7be2, 0xffc94a, 0x9b5de5, 0xf2f4f3, 0x2ecc71, 0x555555, 0x1a7a4a];
+  // Personbil vektet høyere — den er vanligst ute i trafikken
+  const trafficBuilders = [createTrafficCar, createTrafficCar, createTrafficVan, createTrafficBus, createTrafficTruck];
   function makeTrafficCar() {
-    const g = new THREE.Group();
     const color = trafficColors[Math.floor(Math.random() * trafficColors.length)];
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color,
-      metalness: 0.45,
-      roughness: 0.35,
-    });
-    const roll = Math.random();
-    let body;
-    let cabin;
-    if (roll < 0.25) {
-      // Buss
-      body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.9, 3.4), bodyMat);
-      body.position.y = 0.7;
-      cabin = new THREE.Mesh(
-        new THREE.BoxGeometry(1.05, 0.35, 0.8),
-        new THREE.MeshStandardMaterial({ color: 0x1a2220, metalness: 0.2, roughness: 0.5 })
-      );
-      cabin.position.set(0, 1.05, -1.2);
-    } else if (roll < 0.5) {
-      // Lastebil / varebil
-      body = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.85, 2.6), bodyMat);
-      body.position.y = 0.7;
-      cabin = new THREE.Mesh(
-        new THREE.BoxGeometry(1.05, 0.45, 0.9),
-        new THREE.MeshStandardMaterial({ color: 0x2a3030, metalness: 0.3, roughness: 0.45 })
-      );
-      cabin.position.set(0, 0.95, -0.95);
-    } else {
-      // Vanlig bil
-      body = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.42, 2.0), bodyMat);
-      body.position.y = 0.45;
-      cabin = new THREE.Mesh(
-        new THREE.BoxGeometry(0.9, 0.32, 1.0),
-        new THREE.MeshStandardMaterial({ color: 0x1a2220, metalness: 0.2, roughness: 0.5 })
-      );
-      cabin.position.set(0, 0.78, -0.1);
-    }
-    body.castShadow = true;
-    cabin.castShadow = true;
-    g.add(body, cabin);
-    return g;
+    const build = trafficBuilders[Math.floor(Math.random() * trafficBuilders.length)];
+    return build(color);
   }
 
   // ---------- Kjøretilstand (uendret logikk) ----------
@@ -813,16 +486,22 @@ export function createCarRunner(canvas, options = {}) {
   let slowdownUntil = 0;
   let elapsed = 0;
   let waveTimer = 0;
-  let waveCount = 0; // teller bølger — hver 7. blir en oppgaverunde
+  let waveCount = 0;
   let questionRoundId = 0;
   let questionActive = false;
   let combo = 0;
+  let comboBest = 0;
   let coinsCollected = 0;
   let worldObjects = [];
-  let secondsPerCoin = opts.secondsPerCoin;
-  let flashUntil = 0; // grønn/rød lakkglimt ved riktig/feil svar
-  let throttle = 1; // 1 = cruise, >1 gass, <1 brems
+  let flashUntil = 0;
+  let throttle = 1;
   const driveKeys = { gas: false, brake: false };
+  let gamePhase = "stopped"; // "playing" | "dying" | "stopped"
+  let endReason = null;
+  let endAt = 0;
+  let bombHealth = 1;
+  let currentSpeed = baseSpeed;
+  let questionPlate = null; // aktiv 3D-oppgaveplate
 
   function resize() {
     const w = canvas.clientWidth || canvas.parentElement?.clientWidth || 600;
@@ -840,7 +519,7 @@ export function createCarRunner(canvas, options = {}) {
   }
 
   function onKeyDown(e) {
-    if (!running) return;
+    if (gamePhase !== "playing") return;
     if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") {
       if (!e.repeat) steer(-1);
       e.preventDefault();
@@ -869,7 +548,7 @@ export function createCarRunner(canvas, options = {}) {
     if (e.touches.length === 1) touchStartX = e.touches[0].clientX;
   }
   function onTouchEnd(e) {
-    if (!running || touchStartX === null) return;
+    if (gamePhase !== "playing" || touchStartX === null) return;
     const endX = e.changedTouches[0].clientX;
     const delta = endX - touchStartX;
     touchStartX = null;
@@ -941,19 +620,57 @@ export function createCarRunner(canvas, options = {}) {
     }
   }
 
-  // Oppgaverunde: fire skilt-porter (ett svar per fil) — Highway-stil
+  // Oppgaverunde: mållinje + fire skilt som svever til linjen låser dem
   function spawnQuestionWave() {
     const a = 1 + Math.floor(Math.random() * TABLE_MAX);
     const b = 1 + Math.floor(Math.random() * TABLE_MAX);
     const answers = makeAnswers(a, b);
     const roundId = ++questionRoundId;
+    const text = `${a} × ${b}`;
+
+    const line = createFinishLine(ROAD_WIDTH);
+    line.position.set(0, 0, SPAWN_Z);
+    scene.add(line);
+    worldObjects.push({
+      mesh: line,
+      lane: -1,
+      kind: "finishLine",
+      roundId,
+      locked: false,
+    });
+
+    if (questionPlate) {
+      scene.remove(questionPlate);
+      disposeModel(questionPlate);
+    }
+    questionPlate = createQuestionPlate(text);
+    questionPlate.position.set(0, 0, HOVER_Z);
+    scene.add(questionPlate);
+    worldObjects.push({
+      mesh: questionPlate,
+      lane: -1,
+      kind: "questionPlate",
+      roundId,
+      sticky: true,
+      locked: false,
+    });
+
     answers.forEach((value, lane) => {
       const mesh = makeSign(value);
-      mesh.position.set(LANES[lane], 0, SPAWN_Z);
+      mesh.position.set(LANES[lane], 0, HOVER_Z);
       scene.add(mesh);
-      worldObjects.push({ mesh, lane, kind: "sign", value, correct: value === a * b, roundId });
+      worldObjects.push({
+        mesh,
+        lane,
+        kind: "sign",
+        value,
+        correct: value === a * b,
+        roundId,
+        sticky: true,
+        locked: false,
+      });
     });
-    opts.onQuestion({ text: `${a} × ${b}`, answers });
+    opts.onQuestion({ text, answers });
     questionActive = true;
   }
 
@@ -968,11 +685,12 @@ export function createCarRunner(canvas, options = {}) {
 
   function clearWorldObjects() {
     for (const obj of worldObjects) {
-      scene.remove(obj.mesh);
+      removeWorldObject(obj);
     }
     worldObjects = [];
     questionActive = false;
-    opts.onQuestion(null); // skjul en eventuell aktiv oppgave i HUD-en
+    questionPlate = null;
+    opts.onQuestion(null);
   }
 
   // Kort glimt i lakken: grønt ved riktig svar, rødt ved feil
@@ -986,64 +704,105 @@ export function createCarRunner(canvas, options = {}) {
   function endQuestionRound(roundId) {
     questionActive = false;
     for (const o of worldObjects) {
-      if (o.kind === "sign" && o.roundId === roundId) {
+      if (
+        (o.kind === "sign" || o.kind === "finishLine" || o.kind === "questionPlate") &&
+        o.roundId === roundId
+      ) {
         o.resolved = true;
-        scene.remove(o.mesh);
+        removeWorldObject(o);
       }
     }
+    questionPlate = null;
     opts.onQuestion(null);
   }
 
-  // Bilen passerte et svarskilt: vurder svaret (feil = runden over, Highway-stil)
+  function bumpCombo() {
+    combo += 1;
+    if (combo > comboBest) comboBest = combo;
+  }
+
+  // Bilen passerte et svarskilt: vurder svaret (feil = runden over)
   function resolveQuestion(hit) {
+    const pos = hit.mesh.position.clone();
     endQuestionRound(hit.roundId);
     if (hit.correct) {
-      combo += 1;
+      bumpCombo();
       coinsCollected += QUESTION_BONUS_COINS;
-      opts.onEarn(secondsPerCoin * QUESTION_BONUS_COINS);
+      opts.onEarn(secondsPerCoin() * QUESTION_BONUS_COINS);
       for (let i = 0; i < QUESTION_BONUS_COINS; i++) opts.onCoinCollect();
       flashCar(COLOR_MINT);
+      effects.glory(pos);
       opts.onStatsUpdate({ combo, coinsCollected });
     } else {
       combo = 0;
       flashCar(0xe2483d);
+      effects.failBurst(pos, false);
       opts.onComboBreak();
       opts.onStatsUpdate({ combo, coinsCollected });
       endRun("wrong");
     }
   }
 
-  function endRun(reason) {
-    if (!running) return;
+  function finalizeGameOver() {
+    gamePhase = "stopped";
     running = false;
-    paused = false;
     opts.onQuestion(null);
-    opts.onGameOver({ reason, coinsCollected, earnedHint: coinsCollected });
+    opts.onGameOver({
+      reason: endReason,
+      coinsCollected,
+      survivalSeconds: elapsed,
+      distance,
+      comboBest,
+      mode: gameMode,
+    });
+  }
+
+  function endRun(reason) {
+    if (gamePhase !== "playing") return;
+    gamePhase = "dying";
+    endReason = reason;
+    endAt = elapsed + SURVIVAL_END_DELAY;
+    opts.onQuestion(null);
+
+    const boomPos = new THREE.Vector3(car.position.x, 0.8, car.position.z);
+    if (reason === "bomb") {
+      effects.explode(boomPos, 1.6);
+    } else if (reason === "crash") {
+      effects.failBurst(boomPos, true);
+    } else if (reason === "wrong" || reason === "miss") {
+      effects.failBurst(boomPos, reason === "wrong");
+    }
   }
 
   function collectCoin(obj) {
-    scene.remove(obj.mesh);
-    combo += 1;
+    removeWorldObject(obj);
+    bumpCombo();
     coinsCollected += 1;
-    const earned = secondsPerCoin + streakBonus(combo, secondsPerCoin);
+    const base = secondsPerCoin();
+    const earned = base + streakBonus(combo, base);
     opts.onEarn(earned);
     opts.onCoinCollect();
     opts.onStatsUpdate({ combo, coinsCollected });
   }
 
   function hitObstacle(obj) {
-    scene.remove(obj.mesh);
+    const pos = obj.mesh.position.clone();
+    removeWorldObject(obj);
     if (shieldActive) {
       shieldActive = false;
       shieldRing.visible = false;
       shieldDome.visible = false;
       flashCar(COLOR_CYAN);
-      opts.onShieldUsed();
+      effects.flash("rgba(110,253,255,0.4)", 0.25, 0.35);
+      // Bare et KJØPT skjold forbrukes — bilens gratis skjold-generator
+      // (freeShield) er klar igjen til neste runde.
+      if (upgrades.skjold > 0) opts.onShieldUsed();
       opts.onStatsUpdate({ combo, coinsCollected });
       return;
     }
     combo = 0;
     flashCar(0xe2483d);
+    effects.failBurst(pos, true);
     opts.onComboBreak();
     opts.onStatsUpdate({ combo, coinsCollected });
     endRun("crash");
@@ -1080,7 +839,6 @@ export function createCarRunner(canvas, options = {}) {
     const dt = Math.min(MAX_DT, rawDt);
     lastTime = now;
     elapsed += dt;
-    waveTimer += dt;
 
     // Auto-tune: hvis maskinen ligger under ~24 fps de første sekundene,
     // skru ned grafikken én gang i stedet for å la spillet hakke.
@@ -1090,9 +848,35 @@ export function createCarRunner(canvas, options = {}) {
       if (fpsSamples >= 40) {
         autoTuned = true;
         const avgFps = fpsSamples / fpsAccum;
-        if (avgFps < 24) degradeGraphics();
+        if (avgFps < 24) {
+          degradeGraphics();
+          effects.setLowGraphics(true);
+        }
       }
     }
+
+    // Døende: bare VFX + render til resulteskjermen vises
+    if (gamePhase === "dying") {
+      const camBase = {
+        x: car.position.x * 0.4,
+        y: 9.5,
+        z: 11.5,
+      };
+      effects.update(dt, camBase);
+      camera.lookAt(car.position.x * 0.25, 0.2, -18);
+      renderer.render(scene, camera);
+      if (elapsed >= endAt) {
+        running = false;
+        if (rafId !== null) cancelAnimationFrame(rafId);
+        rafId = null;
+        finalizeGameOver();
+      }
+      return;
+    }
+
+    if (gamePhase !== "playing") return;
+
+    waveTimer += dt;
 
     let speed = Math.min(maxSpeed, baseSpeed + distance * 0.004 * speedScale);
     // Gass / brems
@@ -1106,11 +890,32 @@ export function createCarRunner(canvas, options = {}) {
     speed *= throttle;
     if (elapsed < slowdownUntil) speed *= SLOWDOWN_FACTOR;
     if (questionActive) speed *= QUESTION_APPROACH_SLOW;
+    currentSpeed = speed;
     distance += speed * dt;
+
+    // Fartsbombe: helse følger fart
+    if (bombMode) {
+      const speedRatio = currentSpeed / maxSpeed;
+      if (speedRatio >= 0.75) bombHealth += BOMB_REGEN * dt;
+      else if (speedRatio <= 0.45) bombHealth -= BOMB_DRAIN_SLOW * dt;
+      else bombHealth -= BOMB_DRAIN_MID * dt;
+      bombHealth = Math.min(1, Math.max(0, bombHealth));
+      opts.onBombHealth(bombHealth);
+      if (bombHealth <= 0) {
+        endRun("bomb");
+      }
+    }
+
+    if (gamePhase !== "playing") {
+      const camBaseEarly = { x: car.position.x * 0.4, y: 9.5, z: 11.5 };
+      effects.update(dt, camBaseEarly);
+      camera.lookAt(car.position.x * 0.25, 0.2, -18);
+      renderer.render(scene, camera);
+      return;
+    }
 
     if (waveTimer >= WAVE_INTERVAL) {
       if (questionActive) {
-        // Hold igjen til skiltene er passert
         waveTimer = WAVE_INTERVAL;
       } else {
         waveTimer -= WAVE_INTERVAL;
@@ -1130,11 +935,27 @@ export function createCarRunner(canvas, options = {}) {
       }
     }
 
-    const next = [];
-    for (const obj of worldObjects) {
-      if (obj.resolved) continue; // skilt fra en avsluttet oppgaverunde
+    // Finn aktiv mållinje for sticky-lås
+    let activeLine = null;
+    for (const o of worldObjects) {
+      if (o.kind === "finishLine" && !o.resolved) {
+        activeLine = o;
+        break;
+      }
+    }
+    if (activeLine && !activeLine.locked && activeLine.mesh.position.z >= HOVER_Z) {
+      activeLine.locked = true;
+      for (const o of worldObjects) {
+        if (o.sticky && o.roundId === activeLine.roundId) o.locked = true;
+      }
+    }
+    const lockZ = activeLine && activeLine.locked ? activeLine.mesh.position.z : HOVER_Z;
 
-      // Trafikk: egen fart + filbytte. Resten scroller med veien.
+    const next = [];
+    let stopCollisions = false;
+    for (const obj of worldObjects) {
+      if (obj.resolved) continue;
+
       if (obj.kind === "obstacle" && obj.isTraffic) {
         obj.mesh.position.z += speed * (1 - obj.rel) * dt;
         obj.laneChangeTimer -= dt;
@@ -1150,8 +971,20 @@ export function createCarRunner(canvas, options = {}) {
         if (Math.abs(obj.mesh.position.x - tx) < 0.12) {
           obj.lane = obj.targetLane;
         }
-        // Lett sving-lean
         obj.mesh.rotation.y = (tx - obj.mesh.position.x) * -0.08;
+        if (obj.mesh.userData.wheels) {
+          for (const w of obj.mesh.userData.wheels) w.rotation.x += speed * obj.rel * dt * 1.6;
+        }
+      } else if (obj.kind === "finishLine") {
+        obj.mesh.position.z += speed * dt;
+      } else if (obj.sticky) {
+        // Hover: fast Z. Locked: følg mållinjen.
+        obj.mesh.position.z = obj.locked ? lockZ : HOVER_Z;
+        if (obj.kind === "sign") {
+          obj.mesh.position.x = LANES[obj.lane];
+        } else if (obj.kind === "questionPlate") {
+          obj.mesh.position.x = 0;
+        }
       } else {
         obj.mesh.position.z += speed * dt;
       }
@@ -1159,7 +992,6 @@ export function createCarRunner(canvas, options = {}) {
       if (obj.kind === "coin") {
         obj.mesh.rotation.y += dt * 3.4;
         obj.mesh.position.y = 0.85 + Math.sin(elapsed * 3 + obj.bobPhase) * 0.12;
-        // Myntmagnet: mynter i nabofilen dras mot bilen innen rekkevidde
         if (magnetLevel > 0 && !obj.magnetized &&
             Math.abs(obj.lane - laneIndex) === 1 &&
             obj.mesh.position.z > -magnetRange && obj.mesh.position.z < 2) {
@@ -1171,43 +1003,51 @@ export function createCarRunner(canvas, options = {}) {
         }
       }
 
-      const inRange = Math.abs(obj.mesh.position.z) < COLLIDE_Z;
-      if (obj.kind === "sign") {
-        if (inRange && obj.lane === laneIndex) {
-          resolveQuestion(obj);
+      if (!stopCollisions && gamePhase === "playing") {
+        const inRange = Math.abs(obj.mesh.position.z) < COLLIDE_Z;
+        if (obj.kind === "sign") {
+          if (obj.locked && inRange && obj.lane === laneIndex) {
+            resolveQuestion(obj);
+            if (gamePhase !== "playing") stopCollisions = true;
+            continue;
+          }
+        } else if (obj.kind === "coin") {
+          const hit = obj.magnetized
+            ? Math.abs(obj.mesh.position.x - car.position.x) < 1.0
+            : obj.lane === laneIndex;
+          if (inRange && hit) {
+            collectCoin(obj);
+            continue;
+          }
+        } else if (obj.kind === "obstacle" && inRange && obj.lane === laneIndex) {
+          hitObstacle(obj);
+          if (gamePhase !== "playing") stopCollisions = true;
           continue;
         }
-      } else if (obj.kind === "coin") {
-        // Magnetiserte mynter treffes på avstand, ikke fil
-        const hit = obj.magnetized
-          ? Math.abs(obj.mesh.position.x - car.position.x) < 1.0
-          : obj.lane === laneIndex;
-        if (inRange && hit) {
-          collectCoin(obj);
+
+        if (obj.mesh.position.z > DESPAWN_Z) {
+          if (obj.kind === "sign" || obj.kind === "finishLine") {
+            endQuestionRound(obj.roundId);
+            endRun("miss");
+            stopCollisions = true;
+            continue;
+          }
+          if (obj.kind === "questionPlate") {
+            continue;
+          }
+          removeWorldObject(obj);
           continue;
         }
-      } else if (inRange && obj.lane === laneIndex) {
-        hitObstacle(obj);
+      } else if (obj.mesh.position.z > DESPAWN_Z && obj.kind !== "sign" && obj.kind !== "finishLine" && obj.kind !== "questionPlate") {
+        removeWorldObject(obj);
         continue;
       }
 
-      if (obj.mesh.position.z > DESPAWN_Z) {
-        if (obj.kind === "sign") {
-          // Kjørte forbi uten å velge svar = ute (Highway-stil)
-          endQuestionRound(obj.roundId);
-          scene.remove(obj.mesh);
-          endRun("miss");
-          continue;
-        }
-        scene.remove(obj.mesh);
-        continue;
-      }
-      // Trafikk som kjører forbi langt foran (høy rel) — fjern langt bak kamera
       if (obj.isTraffic && obj.mesh.position.z < SPAWN_Z - 20) {
-        scene.remove(obj.mesh);
+        removeWorldObject(obj);
         continue;
       }
-      next.push(obj);
+      if (!obj.resolved) next.push(obj);
     }
     worldObjects = next;
 
@@ -1220,34 +1060,33 @@ export function createCarRunner(canvas, options = {}) {
     car.rotation.x = Math.sin(elapsed * 9) * 0.006;
     for (const wheel of wheels) wheel.rotation.x += speed * dt * 1.6;
 
-    // Skjoldringen roterer rolig mens den er aktiv
     if (shieldActive) {
       shieldRing.rotation.y += dt * 0.8;
       shieldDome.rotation.y -= dt * 0.35;
     }
-    // Turbo-flammer: pulser litt mens du kjører
     for (let i = 0; i < turboFlames.length; i++) {
       const f = turboFlames[i];
       const pulse = 0.85 + Math.sin(elapsed * 18 + i) * 0.15;
       f.scale.set(pulse, 0.7 + Math.random() * 0.6, pulse);
     }
 
-    // Tilbakestill lakken etter grønn/rød tilbakemelding på svar
     if (flashUntil > 0 && elapsed >= flashUntil) {
       flashUntil = 0;
       bodyMat.emissive.setHex(paintColor);
       bodyMat.emissiveIntensity = 0.04;
     }
 
-    // Skyggekamera og himmel følger bilen
     moon.target.position.set(car.position.x, 0, -12);
     sky.position.x = camera.position.x;
 
-    // Kamera: chase med lerp + fartsfølelse via FOV
-    const camTargetX = car.position.x * 0.4;
-    camera.position.x += (camTargetX - camera.position.x) * Math.min(1, dt * 3.5);
-    camera.position.y = 9.5;
-    camera.position.z = 11.5;
+    const camBase = {
+      x: car.position.x * 0.4,
+      y: 9.5,
+      z: 11.5,
+    };
+    camera.position.x += (camBase.x - camera.position.x) * Math.min(1, dt * 3.5);
+    camera.position.y = camBase.y;
+    camera.position.z = camBase.z;
     camera.lookAt(car.position.x * 0.25, 0.2, -18);
     const speedT = (speed - baseSpeed) / (maxSpeed - baseSpeed);
     const targetFov = 60 + Math.max(0, speedT) * 7;
@@ -1256,13 +1095,20 @@ export function createCarRunner(canvas, options = {}) {
       camera.updateProjectionMatrix();
     }
 
+    effects.update(dt, {
+      x: camera.position.x,
+      y: camera.position.y,
+      z: camera.position.z,
+    });
+
     renderer.render(scene, camera);
   }
 
-  // ---------- Offentlig API (uendret) ----------
+  // ---------- Offentlig API ----------
   function resetState() {
     clearWorldObjects();
-    laneIndex = 1; // nest ytterst til venstre — 4 filer
+    effects.clear();
+    laneIndex = 1;
     car.position.set(LANES[laneIndex], 0, 0);
     distance = 0;
     elapsed = 0;
@@ -1274,11 +1120,19 @@ export function createCarRunner(canvas, options = {}) {
     driveKeys.gas = false;
     driveKeys.brake = false;
     combo = 0;
+    comboBest = 0;
     coinsCollected = 0;
     flashUntil = 0;
+    bombHealth = 1;
+    currentSpeed = baseSpeed;
+    endReason = null;
+    endAt = 0;
+    gamePhase = "stopped";
     bodyMat.emissive.setHex(paintColor);
     bodyMat.emissiveIntensity = 0.04;
     opts.onStatsUpdate({ combo, coinsCollected });
+    if (bombMode) opts.onBombHealth(1);
+    else opts.onBombHealth(null);
   }
 
   const api = {
@@ -1287,26 +1141,37 @@ export function createCarRunner(canvas, options = {}) {
       resetState();
       resize();
       addListeners();
+      gamePhase = "playing";
       running = true;
       lastTime = performance.now();
       spawnWave();
       rafId = requestAnimationFrame(frame);
     },
     stop() {
+      gamePhase = "stopped";
       running = false;
       if (rafId !== null) cancelAnimationFrame(rafId);
       rafId = null;
       removeListeners();
       clearWorldObjects();
+      effects.clear();
       renderer.render(scene, camera);
     },
     pause() {
+      if (gamePhase === "dying") return;
       running = false;
       if (rafId !== null) cancelAnimationFrame(rafId);
       rafId = null;
     },
     resume() {
       if (disposed || running) return;
+      if (gamePhase === "dying") {
+        running = true;
+        lastTime = performance.now();
+        rafId = requestAnimationFrame(frame);
+        return;
+      }
+      if (gamePhase !== "playing") gamePhase = "playing";
       running = true;
       lastTime = performance.now();
       rafId = requestAnimationFrame(frame);
@@ -1315,13 +1180,22 @@ export function createCarRunner(canvas, options = {}) {
       api.stop();
       disposed = true;
       resizeObserver.disconnect();
+      disposeModel(car);
       for (const item of disposables) {
         if (item && typeof item.dispose === "function") item.dispose();
       }
       renderer.dispose();
     },
+    setRewardScale(n) {
+      rewardScale = Math.min(2, Math.max(0.5, Number(n) || 1));
+    },
+    /** @deprecated bruk setRewardScale */
     setSecondsPerCoin(n) {
-      secondsPerCoin = Math.max(1, n | 0);
+      rewardScale = Math.min(2, Math.max(0.5, (Math.max(1, n | 0)) / 20));
+    },
+    setMode(mode) {
+      // Modus settes ved create; recreate runner for bytte.
+      opts.mode = mode === "bomb" ? "bomb" : "normal";
     },
   };
 

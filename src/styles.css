@@ -114,8 +114,8 @@ body {
 .hud-pill {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 12px;
   background: #0a1410;
   border: 1px solid var(--panel-border);
   border-radius: 16px;
@@ -127,6 +127,19 @@ body {
 
 .hud-pill:active {
   cursor: grabbing;
+}
+
+.hud-left,
+.hud-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.hud-right {
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 body.mode-hud.hud-urgent .hud-pill {
@@ -169,17 +182,29 @@ body.mode-hud.hud-urgent .hud-time {
   color: var(--text-muted);
 }
 
-.hud-settings-btn {
-  margin-left: 4px;
+.hud-settings-btn,
+.hud-play-btn {
   width: 26px;
   height: 26px;
   border-radius: 8px;
   cursor: pointer;
 }
 
-.hud-settings-btn svg {
+.hud-settings-btn svg,
+.hud-play-btn svg {
   width: 14px;
   height: 14px;
+}
+
+.hud-play-btn {
+  color: var(--accent-mint);
+  border-color: rgba(64, 255, 192, 0.35);
+}
+
+.hud-play-btn:hover {
+  color: var(--text-primary);
+  border-color: rgba(64, 255, 192, 0.55);
+  background: rgba(64, 255, 192, 0.1);
 }
 
 /* Tauri: vinduet er transparent; pillen ligger inset så hjørnene
@@ -201,7 +226,7 @@ body.mode-hud #hud-view {
 body.mode-hud .hud-pill {
   width: calc(100% - 16px);
   height: calc(100% - 16px);
-  max-width: 296px;
+  max-width: 340px;
   box-shadow: none;
 }
 
@@ -212,7 +237,7 @@ body.preview #hud-view {
   right: 24px;
   top: auto;
   left: auto;
-  width: 312px;
+  width: 356px;
   height: 64px;
   padding: 0;
   z-index: 99999;
@@ -744,6 +769,199 @@ body.game-immersive .car-hud-hint {
   max-width: 28ch;
 }
 
+.car-game-over-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  margin: 8px 0 12px;
+  min-width: min(280px, 90%);
+}
+
+.car-game-over-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 8px;
+  border: 1px solid rgba(56, 230, 172, 0.2);
+}
+
+.car-game-over-stat-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.car-game-over-stat strong {
+  font-size: 18px;
+  color: #38e6ac;
+}
+
+.car-game-over-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.car-fx-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0;
+  background: transparent;
+  transition: none;
+}
+
+.car-bomb-bar {
+  position: absolute;
+  left: 12px;
+  top: 52px;
+  width: min(180px, 42%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.car-bomb-bar[hidden] {
+  display: none !important;
+}
+
+.car-bomb-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #ff6b5a;
+}
+
+.car-bomb-track {
+  height: 12px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(226, 72, 61, 0.55);
+  overflow: hidden;
+}
+
+.car-bomb-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #7a1210, #e2483d);
+  transform-origin: left center;
+  transition: transform 0.1s linear;
+}
+
+.car-mode-select {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 24px;
+  background: rgba(3, 5, 4, 0.88);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.car-mode-select[hidden] {
+  display: none !important;
+}
+
+.car-mode-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: #ffe08a;
+  transform: skewX(-6deg);
+}
+
+.car-mode-cards {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.car-mode-card {
+  width: 160px;
+  padding: 16px 14px;
+  border-radius: 12px;
+  border: 2px solid rgba(255, 224, 138, 0.45);
+  background: rgba(10, 14, 12, 0.9);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.car-mode-card:hover,
+.car-mode-card:focus-visible {
+  border-color: #38e6ac;
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.car-mode-card-name {
+  font-size: 16px;
+  font-weight: 800;
+  color: #ffe08a;
+}
+
+.car-mode-card-desc {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.3;
+}
+
+.car-mode-card-best {
+  margin-top: 6px;
+  font-size: 11px;
+  color: rgba(56, 230, 172, 0.9);
+}
+
+.car-mode-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: #c0392b;
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.reward-scale-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 2px;
+}
+
+.reward-scale-end {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  min-width: 2.5em;
+}
+
+.reward-scale-slider {
+  flex: 1;
+  accent-color: #38e6ac;
+}
+
 .car-game-hud {
   position: absolute;
   inset: 0;
@@ -819,6 +1037,12 @@ body.game-immersive .car-hud-hint {
   max-height: min(88vh, 900px);
   padding: 36px 40px 32px;
   overflow-y: auto;
+}
+
+.card.settings-active:has(.settings-panel:not([hidden])) {
+  max-width: min(860px, 96vw);
+  padding: 0;
+  overflow: hidden;
 }
 
 .card.settings-active #icon-badge,
@@ -906,6 +1130,161 @@ body.setup-mode #btn-settings {
 
 .settings-section:first-of-type {
   margin-top: 8px;
+}
+
+/* Two-pane settings (ChatGPT-style sidebar) */
+.settings-shell {
+  display: flex;
+  align-items: stretch;
+  min-height: min(72vh, 640px);
+  max-height: min(88vh, 900px);
+}
+
+.settings-nav {
+  flex: 0 0 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 12px 18px 14px;
+  border-right: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.22);
+  overflow-y: auto;
+}
+
+.settings-nav-close {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: 0 0 4px 2px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.settings-nav-close:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+
+.settings-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-nav-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.settings-nav-item.is-active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.settings-nav-icon {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.settings-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 28px 32px 24px;
+  overflow-y: auto;
+}
+
+.settings-intro {
+  margin-bottom: 12px;
+}
+
+.settings-pane-title {
+  margin: 0 0 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.settings-pane .settings-hint {
+  margin-bottom: 14px;
+}
+
+.settings-pane .field-label:first-of-type {
+  margin-top: 0;
+}
+
+.settings-footer {
+  margin-top: auto;
+  padding-top: 20px;
+}
+
+@media (max-width: 640px) {
+  .settings-shell {
+    flex-direction: column;
+    min-height: 0;
+    max-height: min(88vh, 900px);
+  }
+
+  .settings-nav {
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 12px 0;
+    border-right: none;
+    border-bottom: 1px solid var(--panel-border);
+    overflow-x: auto;
+  }
+
+  .settings-nav-close {
+    margin: 0;
+  }
+
+  .settings-nav-list {
+    flex-direction: row;
+    flex: 1;
+  }
+
+  .settings-nav-item {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .settings-nav-item span {
+    display: none;
+  }
+
+  .settings-main {
+    padding: 20px 20px 18px;
+  }
 }
 
 .settings-version {
@@ -1220,6 +1599,19 @@ body.setup-mode #btn-settings {
   filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45));
 }
 
+#garage-3d-canvas {
+  width: 100%;
+  height: 200px;
+  display: block;
+  touch-action: none;
+  cursor: grab;
+  border-radius: 10px;
+}
+
+#garage-3d-canvas:active {
+  cursor: grabbing;
+}
+
 .garage-car-label {
   margin: 4px 0 0;
   font-size: 13px;
@@ -1229,7 +1621,7 @@ body.setup-mode #btn-settings {
 
 .garage-tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
   padding: 4px;
   border-radius: 12px;
@@ -1391,4 +1783,15 @@ body.setup-mode #btn-settings {
   height: 36px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.garage-car-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--accent-mint);
+  background: linear-gradient(135deg, rgba(64, 255, 192, 0.14), rgba(110, 253, 255, 0.06));
+  letter-spacing: 0.04em;
 }

@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D-assets – Safe Home</title>
+  <style>
+    :root {
+      --mint: #38e6ac;
+      --cyan: #6efdff;
+      --bg: #050807;
+      --panel: #0a120f;
+      --line: #1b2b25;
+      --text: #d8efe6;
+      --muted: #7fa398;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ---------- Sidebar ---------- */
+    aside {
+      width: 240px;
+      flex-shrink: 0;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      overflow-y: auto;
+      padding: 16px 12px;
+    }
+    aside h1 {
+      font-size: 15px;
+      color: var(--mint);
+      margin: 4px 6px 14px;
+      letter-spacing: 0.04em;
+    }
+    .group-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin: 14px 6px 6px;
+    }
+    .asset-btn {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13.5px;
+      padding: 8px 10px;
+      cursor: pointer;
+    }
+    .asset-btn:hover { background: #101c17; }
+    .asset-btn.active {
+      background: #0f241c;
+      border-color: var(--mint);
+      color: var(--mint);
+    }
+
+    /* ---------- Visningsområde ---------- */
+    main { flex: 1; position: relative; }
+    #view { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+    #view:active { cursor: grabbing; }
+
+    #toolbar {
+      position: absolute;
+      top: 14px;
+      left: 18px;
+      right: 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      pointer-events: none;
+    }
+    #asset-name {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text);
+      text-shadow: 0 1px 6px #000;
+    }
+    #toolbar .spacer { flex: 1; }
+    #toolbar label, #toolbar button {
+      pointer-events: auto;
+      font-size: 12.5px;
+      color: var(--muted);
+      background: rgba(10, 18, 15, 0.85);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 6px 10px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #toolbar button:hover { color: var(--mint); border-color: var(--mint); }
+
+    /* ---------- Valg (lakk / oppgraderinger / tall) ---------- */
+    #options {
+      position: absolute;
+      bottom: 16px;
+      left: 18px;
+      right: 18px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 14px;
+      background: rgba(10, 18, 15, 0.85);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 12.5px;
+      color: var(--muted);
+    }
+    #options:empty { display: none; }
+    #options .opt { display: inline-flex; align-items: center; gap: 8px; }
+    #options select {
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 4px 6px;
+      font-size: 12.5px;
+    }
+    .swatch {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      padding: 0;
+    }
+    .swatch.active { border-color: #fff; }
+    #hint {
+      position: absolute;
+      bottom: 16px;
+      right: 18px;
+      font-size: 11.5px;
+      color: var(--muted);
+      opacity: 0.8;
+      pointer-events: none;
+    }
+    #options:not(:empty) ~ #hint { display: none; }
+  </style>
+</head>
+<body>
+  <aside>
+    <h1>3D-assets</h1>
+    <div id="list"></div>
+  </aside>
+  <main>
+    <canvas id="view"></canvas>
+    <div id="toolbar">
+      <span id="asset-name"></span>
+      <span class="spacer"></span>
+      <label><input type="checkbox" id="autorotate" checked /> Roter automatisk</label>
+      <button id="reset-view" type="button">Nullstill visning</button>
+    </div>
+    <div id="options"></div>
+    <div id="hint">Dra for å rotere · rull for å zoome</div>
+  </main>
+
+  <script type="module">
+    import * as THREE from "../vendor/three.module.min.js";
+    import * as M from "./models.js";
+    import { PAINTS, CARS } from "../game/shop-data.js";
+
+    // ---------- Renderer / scene ----------
+    const canvas = document.getElementById("view");
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050807);
+
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+
+    // Lys som i nattby-temaet, litt lysere så detaljer synes
+    scene.add(new THREE.AmbientLight(0x8fd8c0, 0.45));
+    scene.add(new THREE.HemisphereLight(0x2a6d55, 0x050807, 0.6));
+    const key = new THREE.DirectionalLight(0xcfeee2, 1.8);
+    key.position.set(5, 8, 4);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.camera.left = -6;
+    key.shadow.camera.right = 6;
+    key.shadow.camera.top = 6;
+    key.shadow.camera.bottom = -6;
+    key.shadow.bias = -0.002;
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(0x6efdff, 0.5);
+    rim.position.set(-5, 3, -6);
+    scene.add(rim);
+
+    // Gulv: mørk plate som tar imot skygger + rutenett
+    const ground = new THREE.Mesh(
+      new THREE.CircleGeometry(9, 48),
+      new THREE.MeshStandardMaterial({ color: 0x0a1410, roughness: 0.9, metalness: 0.1 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+    const grid = new THREE.PolarGridHelper(9, 12, 6, 48, 0x1b3b30, 0x122019);
+    grid.position.y = 0.005;
+    scene.add(grid);
+
+    // ---------- Enkle orbit-kontroller (dra / rull) ----------
+    const orbit = { theta: Math.PI * 0.75, phi: 1.05, radius: 6, targetY: 0.6 };
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    canvas.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      orbit.theta -= (e.clientX - lastX) * 0.008;
+      orbit.phi = Math.min(1.5, Math.max(0.15, orbit.phi - (e.clientY - lastY) * 0.006));
+      lastX = e.clientX;
+      lastY = e.clientY;
+    });
+    canvas.addEventListener("pointerup", () => { dragging = false; });
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      orbit.radius = Math.min(20, Math.max(1.5, orbit.radius * (1 + Math.sign(e.deltaY) * 0.1)));
+    }, { passive: false });
+
+    function applyCamera() {
+      const sp = Math.sin(orbit.phi);
+      camera.position.set(
+        orbit.radius * sp * Math.cos(orbit.theta),
+        orbit.radius * Math.cos(orbit.phi),
+        orbit.radius * sp * Math.sin(orbit.theta)
+      );
+      camera.lookAt(0, orbit.targetY, 0);
+    }
+
+    // ---------- Asset-register ----------
+    // Hver oppføring har en build() som lager en fersk modell.
+    let currentPaint = PAINTS[0].color;
+    let currentStyle = "sport";
+    let currentLevels = { turbo: 3, magnet: 2, skjold: 1 };
+    let signValue = 42;
+
+    const ASSETS = [
+      { group: "Biler", id: "player", name: "Spillerbil", build: () => M.createPlayerCar({ paint: currentPaint, style: currentStyle, ...currentLevels }) },
+      { group: "Biler", id: "player-stock", name: "Spillerbil (uten ekstrautstyr)", build: () => M.createPlayerCar({ paint: currentPaint, style: currentStyle }) },
+      { group: "Trafikk", id: "t-car", name: "Personbil", build: () => M.createTrafficCar(0x3d7be2) },
+      { group: "Trafikk", id: "t-van", name: "Varebil", build: () => M.createTrafficVan(0xf2f4f3) },
+      { group: "Trafikk", id: "t-bus", name: "Buss", build: () => M.createTrafficBus(0xffc94a) },
+      { group: "Trafikk", id: "t-truck", name: "Lastebil", build: () => M.createTrafficTruck(0x9b5de5) },
+      { group: "Oppgraderinger", id: "u-turbo", name: "Turbo-kit (nivå 3)", build: () => M.createTurboKit(3) },
+      { group: "Oppgraderinger", id: "u-magnet", name: "Magnet-kit (nivå 2)", build: () => M.createMagnetKit(2) },
+      { group: "Oppgraderinger", id: "u-skjold", name: "Skjold", build: () => M.createShieldKit() },
+      { group: "Objekter", id: "coin", name: "Mynt", lift: 0.85, build: () => M.createCoin() },
+      { group: "Objekter", id: "barrier", name: "Sperring", build: () => M.createBarrier() },
+      { group: "Objekter", id: "sign", name: "Svarskilt", build: () => M.createAnswerSign(signValue) },
+      { group: "Landskap", id: "tree", name: "Tre (nattby)", build: () => M.createTree() },
+      { group: "Landskap", id: "snowtree", name: "Snøtre (vinter)", build: () => M.createTree({ snow: true, foliageColor: 0x2a5a44, trunkColor: 0x5c4c3c }) },
+      { group: "Landskap", id: "cactus", name: "Kaktus (ørken)", build: () => M.createCactus() },
+      { group: "Landskap", id: "palm", name: "Palme (solnedgang)", build: () => M.createPalm() },
+      { group: "Landskap", id: "lamp", name: "Gatelys", build: () => M.createStreetLight() },
+    ];
+
+    // ---------- Vis valgt modell ----------
+    let currentModel = null;
+    let currentAsset = null;
+
+    function showAsset(asset) {
+      if (currentModel) {
+        scene.remove(currentModel);
+        M.disposeModel(currentModel);
+      }
+      currentAsset = asset;
+      currentModel = asset.build();
+      if (asset.lift) currentModel.position.y = asset.lift;
+      scene.add(currentModel);
+      document.getElementById("asset-name").textContent = asset.name;
+
+      // Tilpass kamera til modellens størrelse
+      const box = new THREE.Box3().setFromObject(currentModel);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      orbit.radius = Math.max(2.2, Math.max(size.x, size.y, size.z) * 1.9);
+      orbit.targetY = center.y;
+      buildOptions(asset);
+
+      for (const btn of document.querySelectorAll(".asset-btn")) {
+        btn.classList.toggle("active", btn.dataset.id === asset.id);
+      }
+    }
+
+    // ---------- Kontekstvalg under visningen ----------
+    const optionsEl = document.getElementById("options");
+    function buildOptions(asset) {
+      optionsEl.innerHTML = "";
+      if (asset.id === "player" || asset.id === "player-stock") {
+        // Karosseri-stil (bilene i garasjen)
+        const styleWrap = document.createElement("span");
+        styleWrap.className = "opt";
+        styleWrap.append("Bil: ");
+        const styleSel = document.createElement("select");
+        for (const c of CARS) {
+          const o = document.createElement("option");
+          o.value = c.style;
+          o.textContent = c.name;
+          styleSel.append(o);
+        }
+        styleSel.value = currentStyle;
+        styleSel.addEventListener("change", () => {
+          currentStyle = styleSel.value;
+          showAsset(asset);
+        });
+        styleWrap.append(styleSel);
+        optionsEl.append(styleWrap);
+
+        // Lakk-farger fra butikken
+        const paintWrap = document.createElement("span");
+        paintWrap.className = "opt";
+        paintWrap.append("Lakk: ");
+        for (const p of PAINTS) {
+          const b = document.createElement("button");
+          b.className = "swatch" + (p.color === currentPaint ? " active" : "");
+          b.style.background = "#" + p.color.toString(16).padStart(6, "0");
+          b.title = p.name;
+          b.type = "button";
+          b.addEventListener("click", () => {
+            currentPaint = p.color;
+            showAsset(asset);
+          });
+          paintWrap.append(b);
+        }
+        optionsEl.append(paintWrap);
+
+        if (asset.id === "player") {
+          const mk = (label, key, max) => {
+            const wrap = document.createElement("span");
+            wrap.className = "opt";
+            wrap.append(label + ": ");
+            const sel = document.createElement("select");
+            for (let i = 0; i <= max; i++) {
+              const o = document.createElement("option");
+              o.value = i;
+              o.textContent = i === 0 ? "av" : "nivå " + i;
+              sel.append(o);
+            }
+            sel.value = currentLevels[key];
+            sel.addEventListener("change", () => {
+              currentLevels[key] = Number(sel.value);
+              showAsset(asset);
+            });
+            wrap.append(sel);
+            optionsEl.append(wrap);
+          };
+          mk("Turbo", "turbo", 3);
+          mk("Magnet", "magnet", 2);
+          mk("Skjold", "skjold", 1);
+        }
+      } else if (asset.id === "sign") {
+        const wrap = document.createElement("span");
+        wrap.className = "opt";
+        wrap.append("Tall: ");
+        const sel = document.createElement("select");
+        for (const v of [7, 12, 42, 96, 144]) {
+          const o = document.createElement("option");
+          o.value = v;
+          o.textContent = v;
+          sel.append(o);
+        }
+        sel.value = signValue;
+        sel.addEventListener("change", () => {
+          signValue = Number(sel.value);
+          // Bytt tall på eksisterende skilt i stedet for å bygge nytt
+          currentModel.userData.setValue(signValue);
+        });
+        wrap.append(sel);
+        optionsEl.append(wrap);
+      }
+    }
+
+    // ---------- Sidebar ----------
+    const listEl = document.getElementById("list");
+    let lastGroup = null;
+    for (const asset of ASSETS) {
+      if (asset.group !== lastGroup) {
+        lastGroup = asset.group;
+        const label = document.createElement("div");
+        label.className = "group-label";
+        label.textContent = asset.group;
+        listEl.append(label);
+      }
+      const btn = document.createElement("button");
+      btn.className = "asset-btn";
+      btn.dataset.id = asset.id;
+      btn.textContent = asset.name;
+      btn.type = "button";
+      btn.addEventListener("click", () => showAsset(asset));
+      listEl.append(btn);
+    }
+
+    document.getElementById("reset-view").addEventListener("click", () => {
+      orbit.theta = Math.PI * 0.75;
+      orbit.phi = 1.05;
+      if (currentAsset) showAsset(currentAsset);
+    });
+
+    // ---------- Størrelse ----------
+    function resize() {
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      if (!w || !h) return;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    new ResizeObserver(resize).observe(canvas.parentElement);
+
+    // ---------- Loop: roter, spinn hjul, pulser flammer ----------
+    const autorotateEl = document.getElementById("autorotate");
+    let last = performance.now();
+    function frame(now) {
+      requestAnimationFrame(frame);
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      if (autorotateEl.checked && !dragging) orbit.theta += dt * 0.5;
+
+      if (currentModel) {
+        const ud = currentModel.userData;
+        if (ud.wheels) for (const w of ud.wheels) w.rotation.x += dt * 4;
+        if (ud.flames) {
+          const t = now / 1000;
+          ud.flames.forEach((f, i) => {
+            const pulse = 0.85 + Math.sin(t * 18 + i) * 0.15;
+            f.scale.set(pulse, 0.7 + Math.random() * 0.6, pulse);
+          });
+        }
+        if (currentAsset && currentAsset.id === "coin") currentModel.rotation.y += dt * 3.4;
+        if (ud.ring) {
+          ud.ring.rotation.y += dt * 0.8;
+          ud.dome.rotation.y -= dt * 0.35;
+        }
+      }
+
+      applyCamera();
+      renderer.render(scene, camera);
+    }
+
+    resize();
+    // Dyp lenke: #<asset-id> velger modell direkte (f.eks. preview.html#t-bus)
+    const fromHash = ASSETS.find((a) => a.id === location.hash.slice(1));
+    showAsset(fromHash || ASSETS[0]);
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>

@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Garasje – forhåndsvisning</title>
+  <style>
+    :root {
+      --mint: #3ddc97;
+      --mint-bright: #4affc0;
+      --cyan: #6efdff;
+      --gold: #ffc94a;
+      --panel: rgba(10, 16, 14, 0.82);
+      --panel-border: rgba(255, 255, 255, 0.09);
+      --text: #e8f4ee;
+      --muted: #8aa89c;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #060a09;
+      color: var(--text);
+      user-select: none;
+    }
+    #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+    #scene:active { cursor: grabbing; }
+
+    /* ---------- Toppbar ---------- */
+    #topbar {
+      position: fixed; top: 0; left: 0; right: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 22px;
+      background: linear-gradient(180deg, rgba(4, 7, 6, 0.9), transparent);
+      z-index: 10;
+    }
+    .topbtn {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: none; border: none; color: var(--text);
+      font-size: 17px; font-weight: 600; cursor: pointer;
+    }
+    .topbtn .arr { font-size: 26px; font-weight: 400; line-height: 1; }
+    #wallet {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--panel); border: 1px solid var(--panel-border);
+      border-radius: 999px; padding: 7px 8px 7px 14px;
+      font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums;
+    }
+    #wallet .coin { color: var(--gold); }
+    #wallet .plus {
+      width: 28px; height: 28px; border-radius: 8px; border: none;
+      background: var(--mint); color: #052018; font-size: 18px; font-weight: 800; cursor: pointer;
+    }
+
+    /* ---------- Felles panel-stil ---------- */
+    .panel {
+      position: fixed; z-index: 10;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      backdrop-filter: blur(6px);
+      padding: 14px 16px;
+    }
+    .panel h2 {
+      font-size: 13px; letter-spacing: 0.14em; color: var(--mint-bright);
+      text-transform: uppercase; margin-bottom: 12px;
+    }
+
+    /* ---------- Venstre: statistikk ---------- */
+    #stats { left: 22px; top: 84px; width: 210px; }
+    .stat { margin-bottom: 12px; }
+    .stat-row {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13.5px; color: var(--text); margin-bottom: 4px;
+    }
+    .stat-row .ico { width: 18px; text-align: center; color: var(--muted); font-size: 14px; }
+    .bars { display: flex; gap: 4px; }
+    .bars i {
+      width: 16px; height: 7px; border-radius: 2px;
+      background: rgba(255, 255, 255, 0.10);
+    }
+    .bars i.on { background: var(--mint-bright); box-shadow: 0 0 6px rgba(74, 255, 192, 0.5); }
+    #perk { left: 22px; top: 318px; width: 210px; }
+    #perk-text { font-size: 13px; color: var(--muted); line-height: 1.45; }
+
+    /* ---------- Høyre: valg ---------- */
+    #menu { right: 22px; top: 84px; width: 230px; padding: 8px; }
+    .menu-row {
+      display: flex; align-items: center; gap: 12px;
+      width: 100%; padding: 12px 12px; margin: 2px 0;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid transparent; border-radius: 10px;
+      color: var(--text); font-size: 14px; font-weight: 700;
+      letter-spacing: 0.05em; cursor: pointer; text-align: left;
+    }
+    .menu-row:hover { border-color: rgba(74, 255, 192, 0.35); }
+    .menu-row .ico { color: var(--muted); font-size: 16px; width: 20px; text-align: center; }
+    .menu-row .val { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--muted); font-weight: 600; }
+    .menu-row .dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.25); }
+
+    /* Popover med valg */
+    #popover {
+      position: fixed; z-index: 20; right: 262px; top: 84px; width: 300px;
+      max-height: 60vh; overflow-y: auto;
+      background: rgba(8, 13, 11, 0.97);
+      border: 1px solid var(--panel-border); border-radius: 14px;
+      padding: 12px;
+    }
+    #popover[hidden] { display: none; }
+    .pop-title { font-size: 12px; letter-spacing: 0.12em; color: var(--mint-bright); text-transform: uppercase; margin: 4px 4px 10px; }
+    .pop-item {
+      display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center;
+      padding: 10px; border-radius: 10px; border: 1px solid transparent;
+      cursor: pointer;
+    }
+    .pop-item:hover { background: rgba(255, 255, 255, 0.05); }
+    .pop-item.is-selected { border-color: rgba(74, 255, 192, 0.45); background: rgba(74, 255, 192, 0.07); }
+    .pop-item .nm { font-weight: 700; font-size: 14px; }
+    .pop-item .ds { grid-column: 1 / -1; font-size: 12px; color: var(--muted); line-height: 1.4; }
+    .pop-item .pr { font-size: 13px; font-weight: 700; color: var(--gold); }
+    .pop-item .pr.owned { color: var(--mint-bright); }
+    .swatches { display: flex; flex-wrap: wrap; gap: 10px; padding: 6px; }
+    .swatches button {
+      width: 34px; height: 34px; border-radius: 50%;
+      border: 3px solid transparent; cursor: pointer;
+    }
+    .swatches button.is-selected { border-color: #fff; }
+
+    /* ---------- Bunn: oppgraderingskort ---------- */
+    #cards {
+      position: fixed; z-index: 10; bottom: 18px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 14px;
+    }
+    .card {
+      width: 132px; padding: 14px 12px 12px;
+      background: var(--panel); border: 1px solid var(--panel-border);
+      border-radius: 14px; text-align: center; backdrop-filter: blur(6px);
+    }
+    .card h3 { font-size: 13px; letter-spacing: 0.1em; color: var(--mint-bright); }
+    .card .big-ico { font-size: 34px; margin: 10px 0 4px; color: var(--text); }
+    .card .lvl { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+    .card .buy {
+      width: 100%; padding: 7px 0; border: none; border-radius: 8px;
+      background: var(--mint); color: #052018; font-weight: 800; font-size: 13px;
+      cursor: pointer; font-variant-numeric: tabular-nums;
+    }
+    .card .buy:disabled { background: rgba(255,255,255,0.12); color: var(--muted); cursor: default; }
+    .card .buy.maxed { background: rgba(74,255,192,0.15); color: var(--mint-bright); }
+
+    #start-btn {
+      position: fixed; z-index: 10; right: 22px; bottom: 18px;
+      padding: 20px 30px; border: none; border-radius: 14px;
+      background: linear-gradient(160deg, #49d69a, #2aa872);
+      color: #04160e; font-size: 19px; font-weight: 900; letter-spacing: 0.06em;
+      cursor: pointer; box-shadow: 0 6px 24px rgba(74, 255, 192, 0.25);
+    }
+    #start-btn:active { transform: translateY(1px); }
+    #start-note {
+      position: fixed; z-index: 10; right: 26px; bottom: 88px;
+      font-size: 11.5px; color: var(--muted); text-align: right; width: 180px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <div id="topbar">
+    <button class="topbtn" type="button"><span class="arr">←</span> Tilbake</button>
+    <div id="wallet"><span class="coin">◆</span> <span id="wallet-n">12 456</span> <button class="plus" type="button">+</button></div>
+    <button class="topbtn" type="button">⚙ Innstillinger</button>
+  </div>
+
+  <div class="panel" id="stats">
+    <h2>Statistikk</h2>
+    <div id="stat-rows"></div>
+  </div>
+  <div class="panel" id="perk">
+    <h2>Bil-fordel</h2>
+    <p id="perk-text"></p>
+  </div>
+
+  <div class="panel" id="menu">
+    <button class="menu-row" type="button" data-open="cars"><span class="ico">🚗</span> BIL <span class="val" id="val-car"></span></button>
+    <button class="menu-row" type="button" data-open="paint"><span class="ico">🎨</span> LAKK <span class="val"><span class="dot" id="val-paint"></span> ›</span></button>
+    <button class="menu-row" type="button" data-open="maps"><span class="ico">🗺</span> BANE <span class="val" id="val-map"></span></button>
+  </div>
+  <div id="popover" hidden></div>
+
+  <div id="cards"></div>
+  <div id="start-note">Forhåndsvisning — knappen starter ikke spillet ennå</div>
+  <button id="start-btn" type="button">🏁 START LØPET</button>
+
+  <script type="module">
+    import * as THREE from "../vendor/three.module.min.js";
+    import { createPlayerCar, createTurboKit, disposeModel } from "./models.js";
+    import { CARS, PAINTS, MAPS, UPGRADES, getCar, getPaint, getMap } from "../game/shop-data.js";
+
+    // =====================================================================
+    // Tilstand (falsk lommebok — bare for forhåndsvisning)
+    // =====================================================================
+    const state = {
+      wallet: 12456,
+      car: "rakett",
+      paint: 0x38e6ac,
+      map: "nattby",
+      upgrades: { turbo: 2, magnet: 1, skjold: 0 },
+    };
+
+    // =====================================================================
+    // 3D-SCENE: mørk garasje med podium, neonskilt og taklamper
+    // =====================================================================
+    const canvas = document.getElementById("scene");
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x060a09);
+    scene.fog = new THREE.Fog(0x060a09, 14, 30);
+
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+    // Kamera på +z-siden: vi ser bilens bakende (som i mockup-en)
+    // med neonskiltene på bakveggen i blikkretningen.
+    const orbit = { theta: Math.PI / 2 - 0.45, phi: 1.18, radius: 6.0, targetY: 0.55 };
+
+    // Svakt basislys — garasjen er mørk, lampene gjør jobben
+    const hemi = new THREE.HemisphereLight(0x2a4d45, 0x050807, 0.65);
+    scene.add(hemi);
+    scene.add(new THREE.AmbientLight(0x40554e, 0.45));
+
+    // Gulv: mørk, blank betong
+    const floor = new THREE.Mesh(
+      new THREE.CircleGeometry(16, 48),
+      new THREE.MeshStandardMaterial({ color: 0x141a18, roughness: 0.35, metalness: 0.55 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    // Podium under bilen
+    const podium = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.15, 2.25, 0.09, 48),
+      new THREE.MeshStandardMaterial({ color: 0x1c2422, roughness: 0.3, metalness: 0.7 })
+    );
+    podium.position.y = 0.045;
+    podium.receiveShadow = true;
+    scene.add(podium);
+    const podiumRing = new THREE.Mesh(
+      new THREE.TorusGeometry(2.15, 0.02, 8, 64),
+      new THREE.MeshStandardMaterial({ color: 0x3ddc97, emissive: 0x3ddc97, emissiveIntensity: 0.9 })
+    );
+    podiumRing.rotation.x = Math.PI / 2;
+    podiumRing.position.y = 0.09;
+    scene.add(podiumRing);
+
+    // Bakvegg
+    const wall = new THREE.Mesh(
+      new THREE.PlaneGeometry(26, 8),
+      new THREE.MeshStandardMaterial({ color: 0x0d1210, roughness: 0.9 })
+    );
+    wall.position.set(0, 4, -7);
+    wall.receiveShadow = true;
+    scene.add(wall);
+
+    // Neonskilt (canvas-tekstur): "UPGRADE" i mint neon
+    function neonSign(text, color, w, h) {
+      const c = document.createElement("canvas");
+      c.width = 512;
+      c.height = 128;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#0a0f0d";
+      ctx.fillRect(0, 0, 512, 128);
+      ctx.font = "bold 72px Arial, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 26;
+      ctx.fillStyle = color;
+      ctx.fillText(text, 256, 68);
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = "#eafff6";
+      ctx.fillText(text, 256, 68);
+      const tex = new THREE.CanvasTexture(c);
+      const sign = new THREE.Mesh(
+        new THREE.PlaneGeometry(w, h),
+        new THREE.MeshBasicMaterial({ map: tex, transparent: true })
+      );
+      return sign;
+    }
+    const signUpgrade = neonSign("UPGRADE", "#4affc0", 4.2, 1.05);
+    signUpgrade.position.set(-1.8, 2.65, -6.9);
+    scene.add(signUpgrade);
+    const signLight = new THREE.PointLight(0x4affc0, 8, 9, 1.6);
+    signLight.position.set(-1.8, 2.55, -5.8);
+    scene.add(signLight);
+    const signDrive = neonSign("DRIVE →", "#6efdff", 2.6, 0.85);
+    signDrive.position.set(3.2, 2.35, -6.9);
+    scene.add(signDrive);
+
+    // Taklamper: skjerm + ekte spotlight ned
+    function hangingLamp(x, z, withSpot) {
+      const g = new THREE.Group();
+      const cord = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.015, 0.015, 1.2, 6),
+        new THREE.MeshStandardMaterial({ color: 0x222826, roughness: 0.8 })
+      );
+      cord.position.y = 4.4;
+      const shade = new THREE.Mesh(
+        new THREE.ConeGeometry(0.35, 0.3, 16, 1, true),
+        new THREE.MeshStandardMaterial({ color: 0x232a27, metalness: 0.7, roughness: 0.4, side: THREE.DoubleSide })
+      );
+      shade.position.y = 3.8;
+      const bulb = new THREE.Mesh(
+        new THREE.SphereGeometry(0.09, 10, 8),
+        new THREE.MeshStandardMaterial({ color: 0xfff2cf, emissive: 0xffe9b0, emissiveIntensity: 3 })
+      );
+      bulb.position.y = 3.72;
+      g.add(cord, shade, bulb);
+      if (withSpot) {
+        const spot = new THREE.SpotLight(0xd8fff0, 65, 14, 0.62, 0.5, 1.4);
+        spot.position.set(0, 3.7, 0);
+        spot.target.position.set(0, 0, 0);
+        spot.castShadow = true;
+        spot.shadow.mapSize.set(1024, 1024);
+        spot.shadow.bias = -0.002;
+        g.add(spot, spot.target);
+      }
+      g.position.set(x, 0, z);
+      return g;
+    }
+    scene.add(hangingLamp(-1.8, -0.5, true));
+    scene.add(hangingLamp(1.8, -0.5, true));
+    scene.add(hangingLamp(0, -3.5, false));
+
+    // Dekor: dekkstabel, kasser, verktøytavle, trafikkone
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x0b0d0c, roughness: 0.95 });
+    for (let i = 0; i < 3; i++) {
+      const t = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.14, 10, 20), tireMat);
+      t.rotation.x = Math.PI / 2;
+      t.position.set(-4.6, 0.15 + i * 0.27, -3.6);
+      t.castShadow = true;
+      scene.add(t);
+    }
+    const crateMat = new THREE.MeshStandardMaterial({ color: 0x4a3a24, roughness: 0.9 });
+    const crate1 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), crateMat);
+    crate1.position.set(4.4, 0.4, -3.4);
+    crate1.rotation.y = 0.4;
+    crate1.castShadow = true;
+    const crate2 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), crateMat);
+    crate2.position.set(4.1, 1.1, -3.5);
+    crate2.rotation.y = -0.2;
+    crate2.castShadow = true;
+    scene.add(crate1, crate2);
+    // Verktøytavle på veggen
+    const board = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.2, 1.3),
+      new THREE.MeshStandardMaterial({ color: 0x181f1c, roughness: 0.85 })
+    );
+    board.position.set(-5.2, 2.2, -6.9);
+    scene.add(board);
+    // Trafikkone
+    const cone = new THREE.Mesh(
+      new THREE.ConeGeometry(0.22, 0.55, 12),
+      new THREE.MeshStandardMaterial({ color: 0xd86820, roughness: 0.7 })
+    );
+    cone.position.set(3.2, 0.28, -1.8);
+    cone.castShadow = true;
+    scene.add(cone);
+
+    // =====================================================================
+    // Bil på podiet
+    // =====================================================================
+    let carGroup = null;
+    const turntable = new THREE.Group();
+    scene.add(turntable);
+
+    function rebuildCar() {
+      if (carGroup) {
+        turntable.remove(carGroup);
+        disposeModel(carGroup);
+      }
+      const c = getCar(state.car);
+      carGroup = createPlayerCar({
+        paint: state.paint,
+        style: c.style,
+        turbo: state.upgrades.turbo,
+        magnet: state.upgrades.magnet,
+        skjold: state.upgrades.skjold,
+      });
+      carGroup.position.y = 0.09;
+      turntable.add(carGroup);
+    }
+
+    // =====================================================================
+    // Orbit + animasjonsløkke
+    // =====================================================================
+    let dragging = false;
+    let lastX = 0;
+    let idleTimer = null;
+    canvas.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      lastX = e.clientX;
+      if (idleTimer) { clearTimeout(idleTimer); idleTimer = -1; }
+      canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      orbit.theta -= (e.clientX - lastX) * 0.008;
+      lastX = e.clientX;
+    });
+    const endDrag = () => {
+      dragging = false;
+      if (idleTimer !== -1) {
+        idleTimer = setTimeout(() => { idleTimer = null; }, 2200);
+      } else {
+        idleTimer = setTimeout(() => { idleTimer = null; }, 2200);
+      }
+    };
+    canvas.addEventListener("pointerup", endDrag);
+    canvas.addEventListener("pointercancel", endDrag);
+
+    function resize() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener("resize", resize);
+    resize();
+
+    let last = performance.now();
+    function frame(now) {
+      requestAnimationFrame(frame);
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      if (!dragging && idleTimer === null) orbit.theta += dt * 0.35;
+      const sp = Math.sin(orbit.phi);
+      camera.position.set(
+        orbit.radius * sp * Math.cos(orbit.theta),
+        orbit.radius * Math.cos(orbit.phi),
+        orbit.radius * sp * Math.sin(orbit.theta)
+      );
+      camera.lookAt(0, orbit.targetY, 0);
+      turntable.rotation.y = -orbit.theta * 0; // podiet står stille — kameraet beveger seg
+      if (carGroup) {
+        for (const w of carGroup.userData.wheels || []) w.rotation.x += dt * 2;
+        const t = now / 1000;
+        (carGroup.userData.flames || []).forEach((f, i) => {
+          const pulse = 0.85 + Math.sin(t * 18 + i) * 0.15;
+          f.scale.set(pulse, 0.7 + Math.random() * 0.6, pulse);
+        });
+        if (carGroup.userData.shieldRing) {
+          carGroup.userData.shieldRing.rotation.y += dt * 0.8;
+          carGroup.userData.shieldDome.rotation.y -= dt * 0.35;
+        }
+      }
+      renderer.render(scene, camera);
+    }
+    requestAnimationFrame(frame);
+
+    // =====================================================================
+    // UI: statistikk, meny, popovers, kort
+    // =====================================================================
+    const fmt = (n) => n.toLocaleString("no-NO").replace(/ /g, " ");
+
+    function effTurbo() {
+      return Math.min(3, state.upgrades.turbo + (getCar(state.car).perk.turboBonus || 0));
+    }
+    function stats() {
+      const style = getCar(state.car).style;
+      const handling = { formel: 8, racer: 6, mini: 6, comet: 5, sport: 5, buggy: 4, muskel: 4, pickup: 3 }[style] ?? 5;
+      const brakes = { mini: 7, formel: 6, comet: 6, sport: 5, racer: 5, buggy: 4, muskel: 4, pickup: 3 }[style] ?? 5;
+      return [
+        ["⚡", "Hastighet", 2 + effTurbo() * 2],
+        ["🚀", "Akselerasjon", 2 + Math.round(effTurbo() * 1.5)],
+        ["🎯", "Håndtering", handling],
+        ["🛑", "Bremser", brakes],
+      ];
+    }
+
+    function renderStats() {
+      const wrap = document.getElementById("stat-rows");
+      wrap.innerHTML = "";
+      for (const [ico, name, val] of stats()) {
+        const row = document.createElement("div");
+        row.className = "stat";
+        const bars = Array.from({ length: 8 }, (_, i) =>
+          `<i class="${i < val ? "on" : ""}"></i>`).join("");
+        row.innerHTML = `<div class="stat-row"><span class="ico">${ico}</span> ${name}</div><div class="bars">${bars}</div>`;
+        wrap.appendChild(row);
+      }
+      const c = getCar(state.car);
+      document.getElementById("perk-text").textContent =
+        Object.keys(c.perk).length ? c.description : `${c.name} har ingen spesialfordel — ennå.`;
+      document.getElementById("val-car").textContent = c.name + " ›";
+      document.getElementById("val-paint").style.background =
+        "#" + state.paint.toString(16).padStart(6, "0");
+      document.getElementById("val-map").textContent = getMap(state.map).name + " ›";
+      document.getElementById("wallet-n").textContent = fmt(state.wallet);
+    }
+
+    // ---------- Oppgraderingskort ----------
+    const CARD_ICONS = { turbo: "🌀", magnet: "🧲", skjold: "🛡" };
+    function renderCards() {
+      const wrap = document.getElementById("cards");
+      wrap.innerHTML = "";
+      for (const up of UPGRADES) {
+        const level = state.upgrades[up.id] || 0;
+        const maxed = level >= up.prices.length;
+        const price = maxed ? null : up.prices[level];
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          <h3>${up.name.toUpperCase().replace("-MOTOR", "")}</h3>
+          <div class="big-ico">${CARD_ICONS[up.id] || "⚙"}</div>
+          <div class="lvl">${maxed ? "MAKS NIVÅ" : "NIVÅ " + level}</div>`;
+        const btn = document.createElement("button");
+        btn.className = "buy" + (maxed ? " maxed" : "");
+        btn.type = "button";
+        btn.textContent = maxed ? "✓ Fullt" : `${fmt(price)} ◆`;
+        btn.disabled = !maxed && state.wallet < price;
+        btn.addEventListener("click", () => {
+          if (maxed || state.wallet < price) return;
+          state.wallet -= price;
+          state.upgrades[up.id] = level + 1;
+          rebuildCar();
+          renderAll();
+        });
+        card.appendChild(btn);
+        wrap.appendChild(card);
+      }
+    }
+
+    // ---------- Popovers (bil / lakk / bane) ----------
+    const popover = document.getElementById("popover");
+    let openPop = null;
+
+    function renderPopover(kind) {
+      popover.innerHTML = "";
+      if (kind === "cars") {
+        popover.innerHTML = `<p class="pop-title">Velg bil</p>`;
+        for (const c of CARS) {
+          const owned = c.price === 0 || state.wallet >= 0; // forhåndsvisning: alt kan prøves
+          const item = document.createElement("div");
+          item.className = "pop-item" + (state.car === c.id ? " is-selected" : "");
+          item.innerHTML = `
+            <span class="nm">${c.name}</span>
+            <span class="pr ${state.car === c.id ? "owned" : ""}">${state.car === c.id ? "Valgt" : fmt(c.price) + " ◆"}</span>
+            <span class="ds">${c.description}</span>`;
+          item.addEventListener("click", () => {
+            state.car = c.id;
+            rebuildCar();
+            renderAll();
+            renderPopover("cars");
+          });
+          popover.appendChild(item);
+        }
+      } else if (kind === "paint") {
+        popover.innerHTML = `<p class="pop-title">Velg lakk</p>`;
+        const sw = document.createElement("div");
+        sw.className = "swatches";
+        for (const p of PAINTS) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.title = p.name;
+          b.style.background = "#" + p.color.toString(16).padStart(6, "0");
+          if (p.color === state.paint) b.classList.add("is-selected");
+          b.addEventListener("click", () => {
+            state.paint = p.color;
+            rebuildCar();
+            renderAll();
+            renderPopover("paint");
+          });
+          sw.appendChild(b);
+        }
+        popover.appendChild(sw);
+      } else if (kind === "maps") {
+        popover.innerHTML = `<p class="pop-title">Velg bane</p>`;
+        for (const m of MAPS) {
+          const item = document.createElement("div");
+          item.className = "pop-item" + (state.map === m.id ? " is-selected" : "");
+          item.innerHTML = `
+            <span class="nm">${m.name}</span>
+            <span class="pr ${state.map === m.id ? "owned" : ""}">${state.map === m.id ? "Valgt" : fmt(m.price) + " ◆"}</span>
+            <span class="ds">${m.description}</span>`;
+          item.addEventListener("click", () => {
+            state.map = m.id;
+            // Ton garasjens lys mot banens farge for smakens skyld
+            hemi.color.setHex(m.theme.hemiSky);
+            renderAll();
+            renderPopover("maps");
+          });
+          popover.appendChild(item);
+        }
+      }
+    }
+
+    document.querySelectorAll(".menu-row").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const kind = btn.dataset.open;
+        if (openPop === kind) {
+          popover.hidden = true;
+          openPop = null;
+        } else {
+          openPop = kind;
+          renderPopover(kind);
+          popover.hidden = false;
+        }
+      });
+    });
+
+    function renderAll() {
+      renderStats();
+      renderCards();
+    }
+
+    rebuildCar();
+    renderAll();
+  </script>
+</body>
+</html>
