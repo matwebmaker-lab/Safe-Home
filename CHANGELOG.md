@@ -1,25 +1,25 @@
 # Changelog
 
-Alle bemerkelsesverdige endringer i Safe Home dokumenteres her.
+All notable changes to Safe Home are documented here.
 
-Formatet er basert på [Keep a Changelog](https://keepachangelog.com/nb/1.1.0/),
-og prosjektet følger [Semantic Versioning](https://semver.org/lang/no/).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
 ### Added
 
-- Oppdateringsseksjon i innstillinger med gjeldende versjon, «hva er nytt» og nedlastingsfremdrift
-- Daglig sjekk etter nye versjoner (installasjon skjer når en voksen trykker Oppdater)
+- Updates section in settings with current version, what’s new, and download progress
+- Daily check for new versions (install starts when an adult taps Update)
 
 ## [0.1.1] - 2026-07-24
 
 ### Changed
 
-- Byttet til Bun for frontend-verktøy
+- Switched to Bun for frontend tooling
 
 ## [0.1.0] - 2026-07-01
 
 ### Added
 
-- Første utgivelse av Safe Home (låseskjerm, PIN, opptjeningsspill, HUD)
+- First release of Safe Home (lock screen, PIN, earn-time game, HUD)

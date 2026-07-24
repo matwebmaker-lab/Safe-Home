@@ -1,327 +1,314 @@
 # Safe Home (Tauri)
 
-En egen erstatning for Windows' innebygde Family Safety-skjermtidslås
-("Time's up!"), bygget i Tauri med design hentet fra ZeBeyond-referansen
-(mørk bakgrunn, rutenett, grønt glød, mint/cyan-gradient-knapp).
+A custom replacement for Windows’ built-in Family Safety screen-time lock
+(“Time’s up!”), built with Tauri using the ZeBeyond reference design
+(dark background, grid, green glow, mint/cyan gradient button).
 
-Ved første oppstart må en voksen konfigurere PIN-kode, sekunder per
-mattestykke og øvrige skjermtidsinnstillinger. Alt+F4 og Start-menyen
-blokkeres mens låseskjermen er synlig.
+On first launch, an adult must configure a PIN, seconds per math item, and
+other screen-time settings. Alt+F4 and the Start menu are blocked while the
+lock screen is visible.
 
-## Funksjoner
+**Language:** The app UI defaults to English. Norwegian can be selected in
+Settings. Release notes and documentation are always written in English.
 
-- **Bytt bruker eller slå av PC** — original-knappen, åpner en liten meny
-  med "Bytt bruker" (låser arbeidsstasjonen) og "Slå av PC" (slår av
-  maskinen umiddelbart).
-- **Få mer tid** — en voksen taster inn PIN-koden sin for å innvilge
-  ekstra tid i dag.
-- **Kjør for å tjene tid** — den som bruker enheten kan spille et 3D
-  bilspill (endless runner bygget med Three.js) for å tjene tid selv,
-  med realistisk nattekjøring-grafikk: ekte bilsilhuett med blank lakk,
-  vinduer, front- og baklykter (frontlysene lyser faktisk opp veien),
-  prosedyrell asfalt, autovern, gatelys, trær, gradient-himmel med
-  stjerner, skygger og stripede trafikksperringer,
-  uten å måtte spørre en voksen: kjør fremover, bytt fil med piltastene
-  (eller A/D, eller sveip på touch), samle mynter og unngå de røde
-  hindringene. Hver mynt gir sekunder (standard 20, justerbart), og en
-  rekke på 5+ mynter uten krasj gir +25 % bonus, 10+ gir +50 %. Krasj
-  koster ingen opptjent tid — bare rekka nullstilles og bilen bremses
-  et øyeblikk. Når de synes de har tjent nok (minst 60 sekunder),
-  trykker de «Ferdig – bruk tiden». Daglig opptjeningsgrense: standard
-  90 min/dag, endres i innstillingene — 0 betyr ingen grense.
-  Spillet har også matteoppgaver, butikk, biloppgraderinger og flere
-  kart — se egen seksjon under.
-- **Boks i hjørnet** (nytt) — når enheten er låst opp (enten via voksen-PIN
-  eller opptjent tid), krymper vinduet til en liten flytende boks øverst
-  til høyre som viser gjenstående tid live. Når tiden er ute, vokser
-  vinduet automatisk tilbake til full låseskjerm. **Ctrl+Shift+H** (eller
-  en annen hurtigtast du velger under Innstillinger) viser eller skjuler
-  boksen når som helst mens enheten er opplåst. Tannhjulet i boksen åpner
-  innstillingene (PIN-beskyttet).
-- **Innstillinger** (nytt) — tannhjulet øverst til høyre er PIN-beskyttet
-  og lar en voksen endre: PIN-kode, teksten for opplåsingstidspunkt,
-  hvor mange minutter «Få mer tid» gir, hvor mange sekunder hvert treff i
-  spillet gir, daglig opptjeningsgrense, Windows-autostart, og hurtigtast
-  for å vise/skjule tidboksen.
-- **PIN ved avinstallering** — NSIS-avinstalleren krever samme voksen-PIN
-  som i appen før Safe Home kan fjernes (automatiske oppdateringer
-  hoppes over PIN-sjekken).
+## Features
 
-Standard-PIN er **1234** — bytt den i innstillingspanelet
-i appen når som helst.
+- **Switch user or shut down PC** — the original button, opens a small menu
+  with “Switch user” (locks the workstation) and “Shut down PC” (powers off
+  the machine immediately).
+- **Get more time** — an adult enters their PIN to grant extra time today.
+- **Drive to earn time** — the device user can play a 3D car game (endless
+  runner built with Three.js) to earn time themselves, with realistic night
+  driving graphics: real car silhouette with glossy paint, windows, front and
+  rear lights (headlights actually light the road), procedural asphalt,
+  guardrails, street lights, trees, gradient sky with stars, shadows, and
+  striped traffic barriers — without asking an adult: drive forward, change
+  lane with the arrow keys (or A/D, or swipe on touch), collect coins, and
+  avoid the red obstacles. Each coin grants seconds (default 20, adjustable),
+  and a streak of 5+ coins without crashing gives +25% bonus, 10+ gives +50%.
+  Crashing costs no earned time — only the streak resets and the car slows
+  briefly. When they feel they’ve earned enough (at least 60 seconds), they
+  tap “Done – use the time”. Daily earn limit: default 90 min/day, changed in
+  settings — 0 means no limit. The game also has math questions, a shop, car
+  upgrades, and multiple maps — see the section below.
+- **Corner box** — when the device is unlocked (via adult PIN or earned time),
+  the window shrinks to a small floating box in the top-right that shows
+  remaining time live. When time runs out, the window grows back to the full
+  lock screen. **Ctrl+Shift+H** (or another shortcut you choose under Settings)
+  shows or hides the box anytime while unlocked. The gear in the box opens
+  settings (PIN-protected).
+- **Settings** — the gear in the top-right is PIN-protected and lets an adult
+  change: PIN, unlock-time text, how many minutes “Get more time” grants, how
+  many seconds each game hit grants, daily earn limit, Windows autostart, and
+  the shortcut to show/hide the time box.
+- **PIN on uninstall** — the NSIS uninstaller requires the same adult PIN as
+  in the app before Safe Home can be removed (automatic updates skip the PIN
+  check).
 
-## Nytt i bilspillet: matte, butikk, oppgraderinger og kart
+The default PIN is **1234** — change it in the in-app settings panel anytime.
 
-Bilspillet er utvidet med fire nye systemer. Alt er ren frontend
-(ingen endringer i Rust-backenden), og alt innhold er fortsatt 100 %
-prosedyrelt — ingen eksterne modeller eller teksturfiler.
+## New in the car game: math, shop, upgrades, and maps
 
-### Matteoppgaver (gange)
+The car game has four new systems. Everything is pure frontend (no Rust
+backend changes), and all content is still 100% procedural — no external
+models or texture files.
 
-Hver 7. bølge (`QUESTION_EVERY` i `car-runner.js`) blir en oppgaverunde
-i stedet for en vanlig bølge:
+### Math questions (multiplication)
 
-- Det genereres en gangoppgave `a × b` der begge faktorer er 1–10
-  (f.eks. «3 × 5 = ?»). Selve oppgaven vises i et banner øverst i
-  spill-HUD-en (`#car-hud-question`) via callback-en `onQuestion`.
-- Tre skilt-porter spawnes — ett per kjørefelt — med tall tegnet på
-  `CanvasTexture` (samme teknikk som asfalt-/stripeteksturene).
-  Ett skilt har riktig svar, de to andre har plausible feilsvar
-  (`a·(b±1)`, `(a±1)·b`, `±a`, `±b` osv. — alltid unike og positive).
-- Kjører bilen i riktig skilt: +3 bonusmynter og rekka øker, med grønt
-  glimt på bilen. Feil skilt: rekka nullstilles og bilen bremses
-  (samme slowdown-mekanisme som hindringer), med rødt glimt.
-- Skilt-teksturene caches per tall for å unngå gjentatt
-  tekstur-oppbygging i lange økter.
+Every 7th wave (`QUESTION_EVERY` in `car-runner.js`) becomes a question round
+instead of a normal wave:
 
-### Lommebok og lagring (`src/game/profile.js`)
+- A multiplication question `a × b` is generated where both factors are 1–10
+  (e.g. “3 × 5 = ?”). The question is shown in a banner at the top of the
+  game HUD (`#car-hud-question`) via the `onQuestion` callback.
+- Three sign gates spawn — one per lane — with numbers drawn on
+  `CanvasTexture` (same technique as the asphalt/stripe textures). One sign
+  has the correct answer; the other two have plausible wrong answers
+  (`a·(b±1)`, `(a±1)·b`, `±a`, `±b`, etc. — always unique and positive).
+- Driving through the correct sign: +3 bonus coins and the streak increases,
+  with a green flash on the car. Wrong sign: streak resets and the car slows
+  (same slowdown as obstacles), with a red flash.
+- Sign textures are cached per number to avoid rebuilding textures in long
+  sessions.
 
-- Mynter gir fortsatt skjermtid akkurat som før, men hver mynt legges
-  også i en **vedvarende lommebok** som brukes i butikken.
-- Profilen lagres i `localStorage` under nøkkelen
-  `safe-home-car-profile` (fungerer både i Tauri-webview og
-  nettleser-forhåndsvisning) og inneholder: `coins`, `upgrades`
-  (nivå per id), `ownedPaints`, `ownedMaps`, `selectedPaint`,
-  `selectedMap`.
+### Wallet and storage (`src/game/profile.js`)
+
+- Coins still grant screen time as before, but each coin is also added to a
+  **persistent wallet** used in the shop.
+- The profile is stored in `localStorage` under the key
+  `safe-home-car-profile` (works in both the Tauri webview and browser
+  preview) and contains: `coins`, `upgrades` (level per id), `ownedPaints`,
+  `ownedMaps`, `selectedPaint`, `selectedMap`.
 - API: `loadProfile()`, `saveProfile()`, `addCoins(profile, n)`,
-  `purchase(profile, price)` (trekker prisen ved råd, returnerer
-  true/false). Korrupt/manglende lagring faller tilbake til
-  standardprofil.
+  `purchase(profile, price)` (deducts the price if affordable, returns
+  true/false). Corrupt/missing storage falls back to the default profile.
 
-### Butikk og garasje (`src/game/shop-data.js` + `#shop-panel`)
+### Shop and garage (`src/game/shop-data.js` + `#shop-panel`)
 
-Ny knapp «Butikk og garasje» i spillpanelet åpner en butikk med tre
-seksjoner (rendres dynamisk fra `main.js`):
+A new “Shop and garage” button in the game panel opens a shop with three
+sections (rendered dynamically from `main.js`):
 
-- **Oppgraderinger** (nivåbaserte):
-  - `turbo` Turbo-motor — 3 nivå (30/60/100 mynter), +10 % toppfart
-    og akselerasjon per nivå.
-  - `magnet` Myntmagnet — 2 nivå (40/80), drar mynter i nabofeltet mot
-    bilen (nivå 2 har lengre rekkevidde og sterkere drag).
-  - `skjold` Skjold — 25 mynter, tåler én kollisjon uten å miste
-    rekka (cyan ring rundt bilen mens aktivt; brukes opp og kan
-    kjøpes på nytt).
-- **Lakk** — 6 farger: mint (gratis), rød/blå (20), lilla (30),
-  hvit (40), gull (50).
-- **Kart** — 4 stk med helt forskjellig tema: Nattbyen (gratis, det
-  opprinnelige utseendet), Ørkenen (75, dag/sand/kaktuser),
-  Vinterveien (100, snø/snøtrær), Solnedgang (150, oransje-lilla
-  himmel/palmer).
+- **Upgrades** (level-based):
+  - `turbo` Turbo engine — 3 levels (30/60/100 coins), +10% top speed and
+    acceleration per level.
+  - `magnet` Coin magnet — 2 levels (40/80), pulls coins in the adjacent
+    lane toward the car (level 2 has longer range and stronger pull).
+  - `skjold` Shield — 25 coins, survives one collision without losing the
+    streak (cyan ring around the car while active; consumed and can be
+    bought again).
+- **Paint** — 6 colors: mint (free), red/blue (20), purple (30), white (40),
+  gold (50).
+- **Maps** — 4 with distinct themes: Night City (free, the original look),
+  Desert (75, day/sand/cacti), Winter Road (100, snow/snow trees), Sunset
+  (150, orange-purple sky/palms).
 
-### Kart-temaer
+### Map themes
 
-Hvert kart er et `theme`-objekt i `shop-data.js` (himmel-gradient,
-tåke, bakkefarge, lys, stjerneopasitet, scenery-variant:
-`tre`/`snøtre`/`kaktus`/`palme`) som sendes til `createCarRunner()`.
-`DEFAULT_THEME` i `car-runner.js` er Nattbyen og skal se nøyaktig ut
-som den gamle versjonen. Når spilleren bytter kart/lakk/oppgradering i
-butikken, gjenskapes runneren (`dispose()` + `createCarRunner()`)
-ved neste spillstart — det finnes ingen runtime-temabytte.
+Each map is a `theme` object in `shop-data.js` (sky gradient, fog, ground
+color, lights, star opacity, scenery variant: `tre`/`snøtre`/`kaktus`/`palme`)
+passed to `createCarRunner()`. `DEFAULT_THEME` in `car-runner.js` is Night
+City and should look exactly like the old version. When the player changes
+map/paint/upgrade in the shop, the runner is recreated (`dispose()` +
+`createCarRunner()`) on the next game start — there is no runtime theme
+swap.
 
-### Utvidede callbacks i `createCarRunner(canvas, options)`
+### Extended callbacks in `createCarRunner(canvas, options)`
 
-Nye options: `paint` (hex-farge på lakken), `upgrades`
-(`{turbo, magnet, skjold}`-nivåer), `theme` (kart-objekt),
-`onQuestion(questionOrNull)`, `onCoinCollect()` (kalles per mynt,
-også for bonusmynter), `onShieldUsed()` (skjoldet ble brukt opp —
-`main.js` nullstiller da `upgrades.skjold` i profilen). Eksisterende
+New options: `paint` (hex paint color), `upgrades` (`{turbo, magnet, skjold}`
+levels), `theme` (map object), `onQuestion(questionOrNull)`, `onCoinCollect()`
+(called per coin, including bonus coins), `onShieldUsed()` (shield was
+consumed — `main.js` then resets `upgrades.skjold` in the profile). Existing
 API (`start/stop/pause/resume/dispose/setSecondsPerCoin`,
-`onEarn/onComboBreak/onStatsUpdate`) er uendret.
+`onEarn/onComboBreak/onStatsUpdate`) is unchanged.
 
 
-## Forhåndsvise uten å bygge Rust
+## Preview without building Rust
 
-Frontend-en er nå ES-moduler (pga. Three.js-importen), så du kan **ikke**
-lenger dobbeltklikke `index.html` direkte — den må serveres over HTTP:
+The frontend is now ES modules (because of the Three.js import), so you can
+**no longer** double-click `index.html` directly — it must be served over HTTP:
 
 ```bash
 bun run preview
 ```
 
-Åpne så http://localhost:3456 for å teste alt — bilspillet, meny,
-PIN-flyt, innstillinger og HUD-boksen — uten Rust/Tauri. `main.js`
-simulerer da Tauri-kallene lokalt (PIN er `1234`). I forhåndsvisning
-vises HUD-boksen som en liten fast boks i hjørnet av siden; i den ekte
-  appen er selve vinduet ~312×64px og transparent rundt boksen.
+Then open http://localhost:3456 to test everything — the car game, menu, PIN
+flow, settings, and HUD box — without Rust/Tauri. `main.js` simulates Tauri
+calls locally (PIN is `1234`). In preview, the HUD box is a small fixed box
+in the page corner; in the real app the window itself is ~312×64px and
+transparent around the box.
 
-## Forutsetninger for den ekte appen
+## Prerequisites for the real app
 
 - [Bun](https://bun.sh)
 - [Rust](https://www.rust-lang.org/tools/install) + `cargo`
-- Tauris systemavhengigheter for Windows (Microsoft Visual C++ Build
-  Tools + WebView2 — WebView2 følger som regel med Windows 10/11)
+- Tauri’s Windows system dependencies (Microsoft Visual C++ Build Tools +
+  WebView2 — WebView2 usually ships with Windows 10/11)
 
-## Kjøre appen i utviklingsmodus
+## Run the app in development mode
 
 ```bash
 bun install
 bun run dev
 ```
 
-## Bygge en installerbar .exe lokalt
+## Build an installable .exe locally
 
 ```bash
 bun run build
 ```
 
-For at oppdaterings-signaturer skal genereres lokalt trenger du
-`TAURI_SIGNING_PRIVATE_KEY` (se under).
+For update signatures to be generated locally you need
+`TAURI_SIGNING_PRIVATE_KEY` (see below).
 
-Legg gjerne til egne ikoner før du bygger en ferdig installasjonsfil:
+Optionally add custom icons before building a release installer:
 
 ```bash
-bunx --bun @tauri-apps/cli icon sti/til/din-logo.png
+bunx --bun @tauri-apps/cli icon path/to/your-logo.png
 ```
 
 ## Release via GitHub Actions
 
-GitHub bygger Windows-installeren, publiserer en Release og legger ut
-`latest.json` som appen bruker til automatiske oppdateringer.
+GitHub builds the Windows installer, publishes a Release, and uploads
+`latest.json` that the app uses for automatic updates.
 
-### Ny versjon (anbefalt)
+### New version (recommended)
 
-1. Fyll inn **`CHANGELOG.md` → `## [Unreleased]`** med hva som er nytt
-   (norsk, kort, brukervendt). Tom Unreleased stopper releasen.
-2. Gå til **Actions → Release → Run workflow**
-3. Velg bump-type:
-   - **patch** — `0.1.0` → `0.1.1` (små fikser)
-   - **minor** — `0.1.0` → `0.2.0` (nye funksjoner)
-   - **major** — `0.1.0` → `1.0.0` (store endringer)
-4. Workflowen bumper versjon i `package.json`, `Cargo.toml` og
-   `tauri.conf.json`, flytter Unreleased til `## [X.Y.Z]`, lager tag
-   `vX.Y.Z`, bygger NSIS-installeren og publiserer releasen med notater
-   fra CHANGELOG (vises også i appen under Innstillinger).
+1. Fill in **`CHANGELOG.md` → `## [Unreleased]`** with what’s new
+   (English, short, user-facing). An empty Unreleased section stops the release.
+2. Go to **Actions → Release → Run workflow**
+3. Choose bump type:
+   - **patch** — `0.1.0` → `0.1.1` (small fixes)
+   - **minor** — `0.1.0` → `0.2.0` (new features)
+   - **major** — `0.1.0` → `1.0.0` (breaking changes)
+4. The workflow bumps the version in `package.json`, `Cargo.toml`, and
+   `tauri.conf.json`, moves Unreleased to `## [X.Y.Z]`, creates tag
+   `vX.Y.Z`, builds the NSIS installer, and publishes the release with notes
+   from CHANGELOG (also shown in the app under Settings).
 
-### Manuell tag
+### Manual tag
 
 ```bash
-# Sørg for at CHANGELOG.md har innhold under [Unreleased] først
-bun run bump -- patch   # eller minor / major
+# Ensure CHANGELOG.md has content under [Unreleased] first
+bun run bump -- patch   # or minor / major
 git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json CHANGELOG.md
 git commit -m "chore: bump version"
 git tag "v$(bun -e "console.log(require('./package.json').version)")"
 git push origin main --tags
 ```
 
-### Secrets (allerede satt for dette repoet)
+### Secrets (already set for this repo)
 
-| Secret | Beskrivelse |
+| Secret | Description |
 |--------|-------------|
-| `TAURI_SIGNING_PRIVATE_KEY` | Privat nøkkel for å signere oppdateringer |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Valgfri passord (tom hvis nøkkelen er uten) |
+| `TAURI_SIGNING_PRIVATE_KEY` | Private key for signing updates |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Optional password (empty if the key has none) |
 
-Privat nøkkel ligger lokalt i `%USERPROFILE%\.tauri\safe-home.key`.
-**Mist aldri denne** — uten den kan ikke nye oppdateringer signeres for
-brukere som allerede har appen.
+The private key lives locally at `%USERPROFILE%\.tauri\safe-home.key`.
+**Never lose this** — without it, new updates cannot be signed for users who
+already have the app.
 
-## Automatiske oppdateringer
+## Automatic updates
 
-Installerte klienter sjekker
+Installed clients check
 `https://github.com/matwebmaker-lab/Safe-Home/releases/latest/download/latest.json`
-omtrent **én gang i døgnet** (ved oppstart og deretter hver time hvis det er
-gått mer enn 24 timer). Finnes en nyere signert versjon, vises den under
-**Innstillinger → App-versjon** med gjeldende versjon, «hva er nytt» og en
-**Oppdater nå**-knapp. Når en voksen starter oppdateringen, lastes den ned med
-fremdriftsindikator, installeres (NSIS, passiv modus), og appen starter på nytt.
+about **once per day** (on startup, then every hour if more than 24 hours have
+passed). If a newer signed version exists, it appears under
+**Settings → App version** with the current version, what’s new, and an
+**Update now** button. When an adult starts the update, it downloads with a
+progress indicator, installs (NSIS, passive mode), and the app restarts.
 
-- Fungerer bare i **release-bygg** (ikke `tauri dev`).
-- Release-notater hentes fra `CHANGELOG.md` (seksjon for versjonen) og legges
-  i GitHub Release / updater-`notes`, som appen viser i innstillinger.
-- Brukere som har en eldre installasjon *uten* updater må installere én
-  gang manuelt fra GitHub Releases; deretter går resten av seg selv.
+- Works only in **release builds** (not `tauri dev`).
+- Release notes are taken from `CHANGELOG.md` (the version section) and put in
+  the GitHub Release / updater `notes`, which the app shows in settings.
+- Users with an older install *without* the updater must install once manually
+  from GitHub Releases; after that, the rest is automatic.
 
-## Hvordan data lagres
+## How data is stored
 
-Appen lagrer to små JSON-filer i:
+The app stores two small JSON files in:
 
 ```
 %APPDATA%\no.familie.safehome\
-├── config.json   PIN-hash, opplåsingstekst, minutter/sekunder, dagsgrense
-└── state.json     gjenstående tid akkurat nå + opptjent i dag
+├── config.json   PIN hash, unlock text, minutes/seconds, daily limit
+└── state.json    remaining time right now + earned today
 ```
 
-Alt dette settes nå enklest via innstillingspanelet i appen (tannhjulet).
-`config.json` opprettes automatisk med standardverdier første gang appen
-kjøres, og kan også redigeres for hånd om ønskelig.
+All of this is easiest to set via the in-app settings panel (the gear).
+`config.json` is created automatically with defaults the first time the app
+runs, and can also be edited by hand if desired.
 
-## PIN ved avinstallering
+## PIN on uninstall
 
-NSIS-avinstalleren ber om **samme PIN** som i appen før Safe Home kan
-fjernes (inntil tre forsøk). Automatiske oppdateringer bruker `/UPDATE` og
-hopper over PIN-sjekken, så oppdateringer fungerer som før.
+The NSIS uninstaller asks for the **same PIN** as in the app before Safe Home
+can be removed (up to three attempts). Automatic updates use `/UPDATE` and skip
+the PIN check, so updates work as before.
 
-- Gjelder NSIS-installeren (`.exe` fra Releases) — det er den eneste
-  installasjonsformen som bygges.
-- Stille avinstallering (`/S`) uten `/UPDATE` avbrytes, slik at PIN ikke
-  kan hoppes over.
-- Hvis ingen PIN er satt ennå (førstegangsoppsett ikke fullført), kan
-  appen avinstalleres uten PIN.
-- Dette er en ekstra terskel — en bruker med administratorrettigheter
-  kan fortsatt omgå det på andre måter. Gi barnet en
-  **standardbruker** (ikke administrator) for best beskyttelse.
+- Applies to the NSIS installer (`.exe` from Releases) — that is the only
+  install form that is built.
+- Silent uninstall (`/S`) without `/UPDATE` is aborted so the PIN cannot be
+  skipped.
+- If no PIN is set yet (first-run setup not completed), the app can be
+  uninstalled without a PIN.
+- This is an extra barrier — a user with administrator rights can still bypass
+  it other ways. Give the child a **standard user** account (not
+  administrator) for best protection.
 
-## Hva denne appen bevisst *ikke* gjør
+## What this app deliberately does *not* do
 
-For å holde omfanget ærlig og håndterbart, er dette låseskjermen, dens
-knapper, opptjeningsspillet og HUD-boksen — ikke en fullverdig
-foreldrekontroll-plattform:
+To keep the scope honest and manageable, this is the lock screen, its buttons,
+the earn-time game, and the HUD box — not a full parental-control platform:
 
-- Den **overvåker ikke automatisk klokkeslett** for når den skal vises
-  første gang — du bestemmer selv når appen startes (f.eks. ved
-  Windows-oppstart, eller trigges fra et annet skript). Når den først
-  vises og en periode med tid går ut, tar den seg derimot selv av å
-  bytte mellom låst og HUD-modus.
-- Den **hindrer ikke** Alt+Tab, Oppgavebehandling eller andre måter å
-  bytte bort fra vinduet på SO-nivå — det krever systemnære «kiosk-modus»-
-  hooks som er utenfor dette prosjektets omfang.
-- Spillet krever WebGL (WebView2 på Windows 10/11 støtter dette). Hvis
-  WebGL mangler, vises en tydelig feilmelding i stedet for spillet.
-- Grafikken justerer seg selv: hvis maskinen ligger under ~24 fps de
-  første sekundene, skrus skygger, frontlyskaster og landskap av
-  automatisk. Du kan også tvinge lav grafikk med `?lowgfx` i URL-en
-  (mest nyttig i nettleser-forhåndsvisning). Spillets hastighet er
-  uavhengig av bildefrekvens, så det går i riktig tempo også på trege
-  maskiner.
-- Spillets opptjente tid rapporteres av frontend-koden til Rust-backenden.
-  Det er ikke hardnet mot en teknisk kyndig bruker som endrer JavaScript
-  via utviklerverktøy — men Tauri-produksjonsbygg har normalt ikke
-  utviklerverktøy tilgjengelig.
-- Dagsgrensen for opptjent tid nullstilles ved UTC-midnatt, ikke
-  nødvendigvis ved midnatt lokal tid.
+- It does **not automatically watch the clock** for when to show the first
+  time — you decide when the app starts (e.g. at Windows startup, or triggered
+  from another script). Once it is shown and a period of time runs out, it
+  handles switching between locked and HUD mode itself.
+- It does **not block** Alt+Tab, Task Manager, or other OS-level ways to leave
+  the window — that needs system-level “kiosk mode” hooks outside this
+  project’s scope.
+- The game requires WebGL (WebView2 on Windows 10/11 supports this). If WebGL
+  is missing, a clear error is shown instead of the game.
+- Graphics self-tune: if the machine stays under ~24 fps for the first few
+  seconds, shadows, headlight casting, and scenery are turned off
+  automatically. You can also force low graphics with `?lowgfx` in the URL
+  (most useful in browser preview). Game speed is independent of frame rate,
+  so it runs at the right pace on slow machines too.
+- Earned time is reported by the frontend to the Rust backend. It is not
+  hardened against a technically skilled user editing JavaScript via developer
+  tools — but Tauri production builds normally do not expose developer tools.
+- The daily earn limit resets at UTC midnight, not necessarily local midnight.
 
-## Mappestruktur
+## Folder structure
 
 ```
 safe-home/
-├── .github/workflows/     GitHub Actions (release + versjonsbump)
-├── .cursor/skills/        Prosjekt-skills (release-notater)
-├── CHANGELOG.md           Release-notater (vises i appen)
+├── .github/workflows/     GitHub Actions (release + version bump)
+├── .cursor/skills/        Project skills (release notes)
+├── CHANGELOG.md           Release notes (shown in the app)
 ├── scripts/
 │   ├── bump-version.mjs
 │   └── extract-changelog.mjs
-├── src/                   Frontend (HTML/CSS/JS ES-moduler, ingen bundler)
-│   ├── index.html          Låst visning + HUD-visning + alle paneler
+├── src/                   Frontend (HTML/CSS/JS ES modules, no bundler)
+│   ├── index.html          Locked view + HUD view + all panels
 │   ├── styles.css
-│   ├── main.js             App-logikk (ES-modul)
-│   ├── game/car-runner.js  3D bilspillet (Three.js endless runner m/ matte,
-│   │                         oppgraderinger og kart-temaer)
-│   ├── game/profile.js     Lommebok + eide ting, lagres i localStorage
-│   ├── game/shop-data.js   Butikkdata: oppgraderinger, lakk og kart-temaer
+│   ├── main.js             App logic (ES module)
+│   ├── game/car-runner.js  3D car game (Three.js endless runner with math,
+│   │                         upgrades, and map themes)
+│   ├── game/profile.js     Wallet + owned items, stored in localStorage
+│   ├── game/shop-data.js   Shop data: upgrades, paints, and map themes
 │   └── vendor/             three.module.min.js + three.core.min.js (offline)
-├── src-tauri/              Rust-backend
-│   ├── src/main.rs         Kommandoer, vindusbytte, bakgrunnstråd, auto-update
+├── src-tauri/              Rust backend
+│   ├── src/main.rs         Commands, window switching, background thread, auto-update
 │   ├── Cargo.toml
-│   ├── tauri.conf.json     Vindu + updater-endepunkt
-│   ├── windows/            NSIS-hooks + PIN-sjekk ved avinstallering
+│   ├── tauri.conf.json     Window + updater endpoint
+│   ├── windows/            NSIS hooks + PIN check on uninstall
 │   └── capabilities/
 └── package.json
 ```
 
-## Én ting å merke seg
+## One thing to note
 
-Rust-koden er skrevet for hånd og kunne ikke kompileres i miljøet den ble
-laget i (ingen `cargo`/Windows-mål tilgjengelig der), så kjør
-`bun run dev` og gi beskjed om du treffer på kompileringsfeil.
-Frontend-koden (HTML/CSS/JS) er derimot testet og verifisert fullt ut i
-nettleser — alle knapper, spillet, innstillinger og HUD-overgangene
-fungerer som beskrevet.
+The Rust code was written by hand and could not be compiled in the environment
+where it was created (no `cargo`/Windows target available there), so run
+`bun run dev` and report any compile errors you hit. The frontend
+(HTML/CSS/JS) has been fully tested and verified in the browser — all
+buttons, the game, settings, and HUD transitions work as described.
