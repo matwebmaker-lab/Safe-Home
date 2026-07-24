@@ -34,11 +34,18 @@ blokkeres mens låseskjermen er synlig.
 - **Boks i hjørnet** (nytt) — når enheten er låst opp (enten via voksen-PIN
   eller opptjent tid), krymper vinduet til en liten flytende boks øverst
   til høyre som viser gjenstående tid live. Når tiden er ute, vokser
-  vinduet automatisk tilbake til full låseskjerm.
+  vinduet automatisk tilbake til full låseskjerm. **Ctrl+Shift+H** (eller
+  en annen hurtigtast du velger under Innstillinger) viser eller skjuler
+  boksen når som helst mens enheten er opplåst. Tannhjulet i boksen åpner
+  innstillingene (PIN-beskyttet).
 - **Innstillinger** (nytt) — tannhjulet øverst til høyre er PIN-beskyttet
   og lar en voksen endre: PIN-kode, teksten for opplåsingstidspunkt,
   hvor mange minutter «Få mer tid» gir, hvor mange sekunder hvert treff i
-  spillet er verdt, og den daglige opptjeningsgrensen.
+  spillet gir, daglig opptjeningsgrense, Windows-autostart, og hurtigtast
+  for å vise/skjule tidboksen.
+- **PIN ved avinstallering** — NSIS-avinstalleren krever samme voksen-PIN
+  som i appen før Safe Home kan fjernes (automatiske oppdateringer
+  hoppes over PIN-sjekken).
 
 Standard-PIN er **1234** — bytt den i innstillingspanelet
 i appen når som helst.
@@ -135,7 +142,7 @@ bun run preview
 PIN-flyt, innstillinger og HUD-boksen — uten Rust/Tauri. `main.js`
 simulerer da Tauri-kallene lokalt (PIN er `1234`). I forhåndsvisning
 vises HUD-boksen som en liten fast boks i hjørnet av siden; i den ekte
-appen er selve vinduet 250×64px og transparent rundt boksen.
+  appen er selve vinduet ~312×64px og transparent rundt boksen.
 
 ## Forutsetninger for den ekte appen
 
@@ -173,20 +180,24 @@ GitHub bygger Windows-installeren, publiserer en Release og legger ut
 
 ### Ny versjon (anbefalt)
 
-1. Gå til **Actions → Release → Run workflow**
-2. Velg bump-type:
+1. Fyll inn **`CHANGELOG.md` → `## [Unreleased]`** med hva som er nytt
+   (norsk, kort, brukervendt). Tom Unreleased stopper releasen.
+2. Gå til **Actions → Release → Run workflow**
+3. Velg bump-type:
    - **patch** — `0.1.0` → `0.1.1` (små fikser)
    - **minor** — `0.1.0` → `0.2.0` (nye funksjoner)
    - **major** — `0.1.0` → `1.0.0` (store endringer)
-3. Workflowen bumper versjon i `package.json`, `Cargo.toml` og
-   `tauri.conf.json`, lager tag `vX.Y.Z`, bygger NSIS/MSI og publiserer
-   releasen.
+4. Workflowen bumper versjon i `package.json`, `Cargo.toml` og
+   `tauri.conf.json`, flytter Unreleased til `## [X.Y.Z]`, lager tag
+   `vX.Y.Z`, bygger NSIS-installeren og publiserer releasen med notater
+   fra CHANGELOG (vises også i appen under Innstillinger).
 
 ### Manuell tag
 
 ```bash
+# Sørg for at CHANGELOG.md har innhold under [Unreleased] først
 bun run bump -- patch   # eller minor / major
-git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
+git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json CHANGELOG.md
 git commit -m "chore: bump version"
 git tag "v$(bun -e "console.log(require('./package.json').version)")"
 git push origin main --tags
@@ -207,10 +218,15 @@ brukere som allerede har appen.
 
 Installerte klienter sjekker
 `https://github.com/matwebmaker-lab/Safe-Home/releases/latest/download/latest.json`
-noen sekunder etter oppstart. Finnes en nyere signert versjon, lastes den
-ned og installeres (NSIS, passiv modus), og appen starter på nytt.
+omtrent **én gang i døgnet** (ved oppstart og deretter hver time hvis det er
+gått mer enn 24 timer). Finnes en nyere signert versjon, vises den under
+**Innstillinger → App-versjon** med gjeldende versjon, «hva er nytt» og en
+**Oppdater nå**-knapp. Når en voksen starter oppdateringen, lastes den ned med
+fremdriftsindikator, installeres (NSIS, passiv modus), og appen starter på nytt.
 
 - Fungerer bare i **release-bygg** (ikke `tauri dev`).
+- Release-notater hentes fra `CHANGELOG.md` (seksjon for versjonen) og legges
+  i GitHub Release / updater-`notes`, som appen viser i innstillinger.
 - Brukere som har en eldre installasjon *uten* updater må installere én
   gang manuelt fra GitHub Releases; deretter går resten av seg selv.
 
@@ -227,6 +243,22 @@ Appen lagrer to små JSON-filer i:
 Alt dette settes nå enklest via innstillingspanelet i appen (tannhjulet).
 `config.json` opprettes automatisk med standardverdier første gang appen
 kjøres, og kan også redigeres for hånd om ønskelig.
+
+## PIN ved avinstallering
+
+NSIS-avinstalleren ber om **samme PIN** som i appen før Safe Home kan
+fjernes (inntil tre forsøk). Automatiske oppdateringer bruker `/UPDATE` og
+hopper over PIN-sjekken, så oppdateringer fungerer som før.
+
+- Gjelder NSIS-installeren (`.exe` fra Releases) — det er den eneste
+  installasjonsformen som bygges.
+- Stille avinstallering (`/S`) uten `/UPDATE` avbrytes, slik at PIN ikke
+  kan hoppes over.
+- Hvis ingen PIN er satt ennå (førstegangsoppsett ikke fullført), kan
+  appen avinstalleres uten PIN.
+- Dette er en ekstra terskel — en bruker med administratorrettigheter
+  kan fortsatt omgå det på andre måter. Gi barnet en
+  **standardbruker** (ikke administrator) for best beskyttelse.
 
 ## Hva denne appen bevisst *ikke* gjør
 
@@ -262,7 +294,11 @@ foreldrekontroll-plattform:
 ```
 safe-home/
 ├── .github/workflows/     GitHub Actions (release + versjonsbump)
-├── scripts/bump-version.mjs
+├── .cursor/skills/        Prosjekt-skills (release-notater)
+├── CHANGELOG.md           Release-notater (vises i appen)
+├── scripts/
+│   ├── bump-version.mjs
+│   └── extract-changelog.mjs
 ├── src/                   Frontend (HTML/CSS/JS ES-moduler, ingen bundler)
 │   ├── index.html          Låst visning + HUD-visning + alle paneler
 │   ├── styles.css
@@ -276,6 +312,7 @@ safe-home/
 │   ├── src/main.rs         Kommandoer, vindusbytte, bakgrunnstråd, auto-update
 │   ├── Cargo.toml
 │   ├── tauri.conf.json     Vindu + updater-endepunkt
+│   ├── windows/            NSIS-hooks + PIN-sjekk ved avinstallering
 │   └── capabilities/
 └── package.json
 ```

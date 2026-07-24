@@ -18,7 +18,7 @@ if (hasTauri) {
 } else {
   // I nettleser-forhåndsvisning: vis HUD-en som en liten fast boks i
   // hjørnet i stedet for full bredde, siden det ekte Tauri-vinduet i
-  // HUD-modus faktisk bare er 250×64px stort.
+  // HUD-modus faktisk bare er ~312×64px stort.
   document.body.classList.add("preview");
 }
 
@@ -29,11 +29,25 @@ const mock = {
   secondsPerHit: 20,
   maxEarnMinutesPerDay: 90,
   autostart: true,
+  hudHotkey: "Ctrl+Shift+H",
   earnedToday: 0,
   pin: "1234",
   remainingSeconds: 0,
   tickHandle: null,
   configured: false,
+};
+
+const mockUpdate = {
+  currentVersion: "0.1.1",
+  available: false,
+  latestVersion: null,
+  notes: null,
+  lastCheckedAt: 0,
+  checking: false,
+  installing: false,
+  downloaded: 0,
+  total: null,
+  error: null,
 };
 
 async function mockInvoke(cmd, args) {
@@ -47,6 +61,7 @@ async function mockInvoke(cmd, args) {
         secondsPerHit: mock.secondsPerHit,
         maxEarnMinutesPerDay: mock.maxEarnMinutesPerDay,
         autostart: mock.autostart,
+        hudHotkey: mock.hudHotkey,
         needsSetup: !mock.configured,
       };
     case "complete_setup": {
@@ -89,7 +104,43 @@ async function mockInvoke(cmd, args) {
       mock.secondsPerHit = args.secondsPerHit;
       mock.maxEarnMinutesPerDay = args.maxEarnMinutesPerDay;
       mock.autostart = Boolean(args.autostart);
+      if (args.hudHotkey) mock.hudHotkey = String(args.hudHotkey);
       return null;
+    case "get_update_status":
+      return { ...mockUpdate };
+    case "check_for_update":
+      mockUpdate.checking = true;
+      mockUpdate.error = null;
+      await new Promise((r) => setTimeout(r, 400));
+      mockUpdate.checking = false;
+      mockUpdate.available = true;
+      mockUpdate.latestVersion = "0.2.0";
+      mockUpdate.notes =
+        "- Ny oppdateringsknapp i innstillinger\n- Viser hva som er nytt\n- Fremdriftsindikator ved nedlasting";
+      mockUpdate.lastCheckedAt = Math.floor(Date.now() / 1000);
+      return { ...mockUpdate };
+    case "install_update": {
+      if (!mockUpdate.available) throw "Ingen ny versjon tilgjengelig.";
+      mockUpdate.installing = true;
+      mockUpdate.downloaded = 0;
+      mockUpdate.total = 8_000_000;
+      for (let i = 1; i <= 8; i += 1) {
+        await new Promise((r) => setTimeout(r, 120));
+        mockUpdate.downloaded = i * 1_000_000;
+        if (typeof window.__mockUpdateProgress === "function") {
+          window.__mockUpdateProgress({
+            downloaded: mockUpdate.downloaded,
+            total: mockUpdate.total,
+          });
+        }
+      }
+      mockUpdate.installing = false;
+      mockUpdate.available = false;
+      mockUpdate.currentVersion = mockUpdate.latestVersion || mockUpdate.currentVersion;
+      mockUpdate.latestVersion = null;
+      mockUpdate.notes = null;
+      return null;
+    }
     case "switch_user":
     case "shutdown_pc":
       console.log(`[forhåndsvisning] ville kalt "${cmd}" i den ekte appen`);
@@ -202,12 +253,19 @@ function updateHud(remainingSeconds) {
 // Dra HUD-pillen rundt på skjermen (Tauri startDragging)
 $("hud-pill").addEventListener("mousedown", async (e) => {
   if (!hasTauri || e.button !== 0) return;
+  // Ikke start dragging når man trykker på innstillinger-knappen
+  if (e.target.closest("#btn-hud-settings")) return;
   e.preventDefault();
   try {
     await window.__TAURI__.window.getCurrentWindow().startDragging();
   } catch (err) {
     console.error("Klarte ikke å starte dragging:", err);
   }
+});
+
+$("btn-hud-settings").addEventListener("click", (e) => {
+  e.stopPropagation();
+  requestOpenSettings();
 });
 
 function resetToDefaultActions() {
@@ -258,12 +316,56 @@ function showSetupWizard(settings) {
 }
 
 // ---------- Oppstart ----------
+let currentHudHotkey = "Ctrl+Shift+H";
+
+function applyHudHotkeyLabel(hotkey) {
+  currentHudHotkey = hotkey || "Ctrl+Shift+H";
+  const pill = $("hud-pill");
+  if (pill) {
+    pill.title = `Dra for å flytte · ${currentHudHotkey} for å skjule`;
+  }
+  const input = $("set-hud-hotkey");
+  if (input && document.activeElement !== input) {
+    input.value = currentHudHotkey;
+  }
+}
+
+/** Bygg forhåndsvisning / ferdig hurtigtast fra tastatur-event. */
+function formatHotkeyFromEvent(e, { allowModifiersOnly = false } = {}) {
+  if (e.metaKey || e.key === "Meta" || e.key === "OS") return null;
+
+  const parts = [];
+  if (e.ctrlKey) parts.push("Ctrl");
+  if (e.shiftKey) parts.push("Shift");
+  if (e.altKey) parts.push("Alt");
+
+  const isModifierOnly = ["Control", "Shift", "Alt", "Meta", "OS"].includes(e.key);
+  if (isModifierOnly) {
+    if (!allowModifiersOnly) return null;
+    return parts.length ? parts.join("+") : "";
+  }
+
+  if (parts.length === 0) return null;
+
+  let key = e.key;
+  if (!key) return null;
+  if (key === " ") key = "Space";
+  else if (key.length === 1) key = key.toUpperCase();
+  else if (/^f\d{1,2}$/i.test(key)) key = key.toUpperCase();
+  else if (key.startsWith("Arrow")) key = key.slice(5);
+  else key = key.charAt(0).toUpperCase() + key.slice(1);
+
+  parts.push(key);
+  return parts.join("+");
+}
+
 async function init() {
   let settings = null;
   try {
     settings = await invoke("get_settings_public");
     $("unlock-time").textContent = settings.unlockTime;
     secondsPerHit = settings.secondsPerHit;
+    applyHudHotkeyLabel(settings.hudHotkey);
   } catch (err) {
     console.error("Klarte ikke å hente innstillinger:", err);
   }
@@ -304,6 +406,12 @@ async function init() {
     });
     listen("open-settings", () => {
       requestOpenSettings();
+    });
+    listen("update-status", (event) => {
+      applyUpdateStatus(event.payload);
+    });
+    listen("update-progress", (event) => {
+      applyUpdateProgress(event.payload);
     });
   }
 }
@@ -1003,17 +1111,221 @@ async function openSettingsPanel() {
   $("set-new-pin").value = "";
   $("set-confirm-pin").value = "";
   $("set-autostart").checked = Boolean(settings.autostart);
+  applyHudHotkeyLabel(settings.hudHotkey);
   $("settings-save-error").hidden = true;
   $("settings-save-ok").hidden = true;
   settingsPanel.hidden = false;
   $("card").classList.add("settings-active");
+  await refreshUpdateStatus();
 }
+
+function formatBytes(n) {
+  if (!Number.isFinite(n) || n <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = n;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i += 1;
+  }
+  return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+function applyUpdateProgress(payload) {
+  const downloaded = Number(payload?.downloaded) || 0;
+  const total = payload?.total == null ? null : Number(payload.total);
+  const progress = $("settings-update-progress");
+  const fill = $("settings-update-progress-fill");
+  const label = $("settings-update-progress-label");
+  progress.hidden = false;
+  if (total && total > 0) {
+    const pct = Math.min(100, Math.round((downloaded / total) * 100));
+    fill.style.width = `${pct}%`;
+    label.textContent = `Laster ned… ${formatBytes(downloaded)} / ${formatBytes(total)} (${pct} %)`;
+  } else {
+    fill.style.width = "15%";
+    label.textContent = `Laster ned… ${formatBytes(downloaded)}`;
+  }
+}
+
+function applyUpdateStatus(status) {
+  if (!status) return;
+  const versionEl = $("settings-current-version");
+  const statusEl = $("settings-update-status");
+  const notesWrap = $("settings-update-notes");
+  const notesTitle = $("settings-update-notes-title");
+  const notesBody = $("settings-update-notes-body");
+  const progress = $("settings-update-progress");
+  const checkBtn = $("btn-check-update");
+  const installBtn = $("btn-install-update");
+
+  versionEl.textContent = `Versjon ${status.currentVersion || "—"}`;
+
+  if (status.installing) {
+    statusEl.textContent = "Laster ned og installerer oppdatering…";
+    applyUpdateProgress({ downloaded: status.downloaded, total: status.total });
+  } else {
+    progress.hidden = true;
+    $("settings-update-progress-fill").style.width = "0%";
+  }
+
+  if (status.checking) {
+    statusEl.textContent = "Sjekker etter oppdateringer…";
+  } else if (status.error && !status.available) {
+    statusEl.textContent = `Kunne ikke sjekke: ${status.error}`;
+  } else if (status.available && status.latestVersion) {
+    statusEl.textContent = `Ny versjon tilgjengelig: ${status.latestVersion}`;
+  } else if (status.lastCheckedAt) {
+    statusEl.textContent = "Du har nyeste versjon.";
+  } else {
+    statusEl.textContent = "Trykk «Se etter oppdatering» for å sjekke.";
+  }
+
+  if (status.available && status.notes) {
+    notesWrap.hidden = false;
+    notesTitle.textContent = `Hva er nytt i ${status.latestVersion || "ny versjon"}`;
+    notesBody.textContent = String(status.notes).trim();
+  } else {
+    notesWrap.hidden = true;
+    notesBody.textContent = "";
+  }
+
+  checkBtn.disabled = Boolean(status.checking || status.installing);
+  installBtn.hidden = !status.available;
+  installBtn.disabled = Boolean(status.checking || status.installing);
+}
+
+async function refreshUpdateStatus() {
+  try {
+    const status = await invoke("get_update_status");
+    applyUpdateStatus(status);
+  } catch (err) {
+    $("settings-current-version").textContent = "Versjon —";
+    $("settings-update-status").textContent = String(err);
+  }
+}
+
+$("btn-check-update").addEventListener("click", async () => {
+  $("btn-check-update").disabled = true;
+  $("settings-update-status").textContent = "Sjekker etter oppdateringer…";
+  try {
+    const status = await invoke("check_for_update");
+    applyUpdateStatus(status);
+  } catch (err) {
+    $("settings-update-status").textContent = String(err);
+    $("btn-check-update").disabled = false;
+  }
+});
+
+$("btn-install-update").addEventListener("click", async () => {
+  $("btn-install-update").disabled = true;
+  $("btn-check-update").disabled = true;
+  applyUpdateProgress({ downloaded: 0, total: null });
+  $("settings-update-status").textContent = "Laster ned og installerer oppdatering…";
+  if (!hasTauri) {
+    window.__mockUpdateProgress = (payload) => applyUpdateProgress(payload);
+  }
+  try {
+    await invoke("install_update");
+    if (!hasTauri) {
+      applyUpdateStatus(await invoke("get_update_status"));
+      $("settings-update-status").textContent =
+        "Oppdatering installert (forhåndsvisning — appen starter ikke på nytt).";
+    }
+  } catch (err) {
+    $("settings-update-status").textContent = String(err);
+    $("btn-check-update").disabled = false;
+    await refreshUpdateStatus();
+  } finally {
+    if (!hasTauri) delete window.__mockUpdateProgress;
+  }
+});
 
 $("btn-settings-cancel").addEventListener("click", async () => {
   settingsPanel.hidden = true;
   pendingSettingsPin = "";
   resetToDefaultActions();
   await leaveSettingsUi();
+});
+
+const hudHotkeyInput = $("set-hud-hotkey");
+let hudHotkeyCapturing = false;
+let hudHotkeyCommitted = false;
+
+function isCompleteHotkey(value) {
+  if (!value || !value.includes("+")) return false;
+  const last = value.split("+").pop();
+  return Boolean(last) && !["Ctrl", "Shift", "Alt"].includes(last);
+}
+
+async function startHudHotkeyCapture() {
+  hudHotkeyCapturing = true;
+  hudHotkeyCommitted = false;
+  if (hasTauri) {
+    try {
+      await invoke("begin_hud_hotkey_capture");
+      // Gi hotkey-tråden tid til å avregistrere (poller ~50 ms)
+      await new Promise((r) => setTimeout(r, 60));
+    } catch {
+      /* forhåndsvisning */
+    }
+  }
+}
+
+async function stopHudHotkeyCapture() {
+  hudHotkeyCapturing = false;
+  if (hasTauri) {
+    try {
+      await invoke("end_hud_hotkey_capture");
+    } catch {
+      /* forhåndsvisning */
+    }
+  }
+}
+
+hudHotkeyInput.addEventListener("focus", () => {
+  hudHotkeyInput.dataset.prev = hudHotkeyInput.value;
+  hudHotkeyInput.value = "";
+  hudHotkeyInput.placeholder = "Trykk kombinasjon…";
+  startHudHotkeyCapture();
+});
+hudHotkeyInput.addEventListener("blur", () => {
+  stopHudHotkeyCapture();
+  if (!hudHotkeyCommitted && !isCompleteHotkey(hudHotkeyInput.value)) {
+    hudHotkeyInput.value = hudHotkeyInput.dataset.prev || currentHudHotkey;
+  }
+  hudHotkeyInput.placeholder = "Klikk og trykk en kombinasjon";
+});
+hudHotkeyInput.addEventListener("keydown", (e) => {
+  if (document.activeElement !== hudHotkeyInput) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.key === "Escape") {
+    hudHotkeyCommitted = false;
+    hudHotkeyInput.value = hudHotkeyInput.dataset.prev || currentHudHotkey;
+    hudHotkeyInput.blur();
+    return;
+  }
+  if (e.repeat) return;
+
+  const isModifierOnly = ["Control", "Shift", "Alt", "Meta", "OS"].includes(e.key);
+  if (isModifierOnly) {
+    const preview = formatHotkeyFromEvent(e, { allowModifiersOnly: true });
+    if (preview !== null) hudHotkeyInput.value = preview;
+    return;
+  }
+
+  const combo = formatHotkeyFromEvent(e);
+  if (!combo) return;
+  hudHotkeyCommitted = true;
+  hudHotkeyInput.value = combo;
+  hudHotkeyInput.blur();
+});
+hudHotkeyInput.addEventListener("keyup", (e) => {
+  if (document.activeElement !== hudHotkeyInput || hudHotkeyCommitted) return;
+  if (!["Control", "Shift", "Alt", "Meta", "OS"].includes(e.key)) return;
+  const preview = formatHotkeyFromEvent(e, { allowModifiersOnly: true });
+  if (preview !== null) hudHotkeyInput.value = preview;
 });
 
 $("btn-settings-save").addEventListener("click", async () => {
@@ -1029,6 +1341,7 @@ $("btn-settings-save").addEventListener("click", async () => {
   const newPin = $("set-new-pin").value.trim();
   const confirmPin = $("set-confirm-pin").value.trim();
   const autostart = $("set-autostart").checked;
+  const hudHotkey = $("set-hud-hotkey").value.trim() || "Ctrl+Shift+H";
 
   if (newPin || confirmPin) {
     if (newPin !== confirmPin) {
@@ -1057,9 +1370,11 @@ $("btn-settings-save").addEventListener("click", async () => {
       secondsPerHit: secondsPerHitVal,
       maxEarnMinutesPerDay: maxEarn,
       autostart,
+      hudHotkey,
     });
     secondsPerHit = secondsPerHitVal;
     $("unlock-time").textContent = unlockTime;
+    applyHudHotkeyLabel(hudHotkey);
     if (newPin) {
       pendingSettingsPin = newPin;
       if (!hasTauri) mock.pin = newPin;

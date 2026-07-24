@@ -19,13 +19,24 @@ use tauri_plugin_updater::UpdaterExt;
 /// Når true: Windows-tast (Start-meny) blokkeres mens låseskjerm/HUD er synlig.
 static BLOCK_WIN_KEY: AtomicBool = AtomicBool::new(true);
 
+/// Når true: HUD-hurtigtasten er midlertidig avregistrert (bruker velger ny kombinasjon).
+static HUD_HOTKEY_CAPTURE: AtomicBool = AtomicBool::new(false);
+
 fn set_block_win_key(block: bool) {
     BLOCK_WIN_KEY.store(block, Ordering::SeqCst);
+}
+
+fn set_hud_hotkey_capture(capturing: bool) {
+    HUD_HOTKEY_CAPTURE.store(capturing, Ordering::SeqCst);
 }
 
 /// Eldre config-filer uten feltet behandles som allerede konfigurert.
 fn default_configured() -> bool {
     true
+}
+
+fn default_hud_hotkey() -> String {
+    "Ctrl+Shift+H".to_string()
 }
 
 /// Innstillinger en voksen kan endre fra appens eget innstillingspanel
@@ -39,6 +50,9 @@ struct Config {
     max_earn_minutes_per_day: u32,
     #[serde(default)]
     autostart: bool,
+    /// Global hurtigtast for å vise/skjule tidboksen, f.eks. "Ctrl+Shift+H".
+    #[serde(default = "default_hud_hotkey")]
+    hud_hotkey: String,
     /// false til førstegangsveiviseren er fullført.
     #[serde(default = "default_configured")]
     configured: bool,
@@ -54,8 +68,138 @@ impl Default for Config {
             seconds_per_hit: 20,
             max_earn_minutes_per_day: 90,
             autostart: true,
+            hud_hotkey: default_hud_hotkey(),
             configured: false,
         }
+    }
+}
+
+/// Tolker en hurtigtast-streng ("Ctrl+Shift+H") til RegisterHotKey-argumenter.
+fn parse_hud_hotkey(s: &str) -> Result<(u32, u32), String> {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+            MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT,
+        };
+
+        let mut mods: u32 = 0;
+        let mut vk: Option<u32> = None;
+
+        for part in s.split('+').map(str::trim).filter(|p| !p.is_empty()) {
+            let lower = part.to_ascii_lowercase();
+            match lower.as_str() {
+                "ctrl" | "control" => mods |= MOD_CONTROL,
+                "shift" => mods |= MOD_SHIFT,
+                "alt" => mods |= MOD_ALT,
+                "win" | "windows" | "meta" | "super" => {
+                    return Err("Windows-tasten kan ikke brukes i hurtigtasten.".into());
+                }
+                _ => {
+                    if vk.is_some() {
+                        return Err("Hurtigtasten kan bare ha én hovedtast.".into());
+                    }
+                    vk = Some(parse_hotkey_vk(part)?);
+                }
+            }
+        }
+
+        if mods == 0 {
+            return Err("Hurtigtasten må inkludere Ctrl, Shift og/eller Alt.".into());
+        }
+        let vk = vk.ok_or_else(|| "Hurtigtasten mangler en hovedtast (f.eks. H).".to_string())?;
+        Ok((mods | MOD_NOREPEAT, vk))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = s;
+        Err("Hurtigtaster støttes bare på Windows.".into())
+    }
+}
+
+fn parse_hotkey_vk(part: &str) -> Result<u32, String> {
+    let upper = part.to_ascii_uppercase();
+    if upper.len() == 1 {
+        let c = upper.chars().next().unwrap();
+        if c.is_ascii_alphanumeric() {
+            return Ok(c as u32);
+        }
+    }
+    if let Some(n) = upper.strip_prefix('F') {
+        if let Ok(num) = n.parse::<u32>() {
+            if (1..=24).contains(&num) {
+                return Ok(0x70 + (num - 1)); // VK_F1 = 0x70
+            }
+        }
+    }
+    match upper.as_str() {
+        "SPACE" | " " => Ok(0x20),
+        "TAB" => Ok(0x09),
+        "ESCAPE" | "ESC" => Ok(0x1B),
+        "INSERT" | "INS" => Ok(0x2D),
+        "DELETE" | "DEL" => Ok(0x2E),
+        "HOME" => Ok(0x24),
+        "END" => Ok(0x23),
+        "PAGEUP" | "PGUP" => Ok(0x21),
+        "PAGEDOWN" | "PGDN" => Ok(0x22),
+        "UP" | "ARROWUP" => Ok(0x26),
+        "DOWN" | "ARROWDOWN" => Ok(0x28),
+        "LEFT" | "ARROWLEFT" => Ok(0x25),
+        "RIGHT" | "ARROWRIGHT" => Ok(0x27),
+        _ => Err(format!("Ukjent tast: {part}")),
+    }
+}
+
+fn normalize_hud_hotkey(s: &str) -> Result<String, String> {
+    let (mods, vk) = parse_hud_hotkey(s)?;
+    Ok(format_hud_hotkey(mods, vk))
+}
+
+fn format_hud_hotkey(mods: u32, vk: u32) -> String {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+            MOD_ALT, MOD_CONTROL, MOD_SHIFT,
+        };
+        let mut parts = Vec::new();
+        if mods & MOD_CONTROL != 0 {
+            parts.push("Ctrl".to_string());
+        }
+        if mods & MOD_SHIFT != 0 {
+            parts.push("Shift".to_string());
+        }
+        if mods & MOD_ALT != 0 {
+            parts.push("Alt".to_string());
+        }
+        parts.push(format_hotkey_vk(vk));
+        parts.join("+")
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (mods, vk);
+        default_hud_hotkey()
+    }
+}
+
+fn format_hotkey_vk(vk: u32) -> String {
+    match vk {
+        0x20 => "Space".into(),
+        0x09 => "Tab".into(),
+        0x1B => "Esc".into(),
+        0x2D => "Insert".into(),
+        0x2E => "Delete".into(),
+        0x24 => "Home".into(),
+        0x23 => "End".into(),
+        0x21 => "PageUp".into(),
+        0x22 => "PageDown".into(),
+        0x26 => "Up".into(),
+        0x28 => "Down".into(),
+        0x25 => "Left".into(),
+        0x27 => "Right".into(),
+        0x70..=0x87 => format!("F{}", vk - 0x70 + 1),
+        c if (b'A' as u32..=b'Z' as u32).contains(&c) || (b'0' as u32..=b'9' as u32).contains(&c) => {
+            char::from_u32(c).unwrap_or('?').to_string()
+        }
+        _ => format!("0x{vk:X}"),
     }
 }
 
@@ -86,7 +230,46 @@ struct RuntimeState {
     hud_x: Option<f64>,
     #[serde(default)]
     hud_y: Option<f64>,
+    /// Unix-tid for siste oppdateringssjekk mot GitHub Releases.
+    #[serde(default)]
+    last_update_check: u64,
 }
+
+/// Cachet status for app-oppdateringer (vist i innstillinger).
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct UpdateStatus {
+    current_version: String,
+    available: bool,
+    latest_version: Option<String>,
+    notes: Option<String>,
+    last_checked_at: u64,
+    checking: bool,
+    installing: bool,
+    downloaded: u64,
+    total: Option<u64>,
+    error: Option<String>,
+}
+
+impl UpdateStatus {
+    fn new(current_version: String) -> Self {
+        Self {
+            current_version,
+            available: false,
+            latest_version: None,
+            notes: None,
+            last_checked_at: 0,
+            checking: false,
+            installing: false,
+            downloaded: 0,
+            total: None,
+            error: None,
+        }
+    }
+}
+
+#[cfg(not(debug_assertions))]
+const UPDATE_CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
 
 struct AppState {
     config: Mutex<Config>,
@@ -98,8 +281,11 @@ struct AppState {
     hud_y: Mutex<Option<f64>>,
     /// Bruker har hentet frem HUD med Ctrl+Win (selv om det er god tid igjen).
     hud_manual_show: Mutex<bool>,
+    /// Bruker har skjult HUD med Ctrl+Win (også når det er lite tid igjen).
+    hud_manual_hide: Mutex<bool>,
     /// Innstillinger er åpne (tray / ny start) — ikke synk Idle/Hud over UI-et.
     settings_focus: Mutex<bool>,
+    update_status: Mutex<UpdateStatus>,
 }
 
 fn hash_pin(pin: &str) -> String {
@@ -315,8 +501,10 @@ fn enter_hud_mode(app: &tauri::AppHandle, win: &tauri::WebviewWindow) {
     *state.ui_mode.lock().unwrap() = UiMode::Hud;
     set_block_win_key(true);
 
-    let hud_w = 268.0_f64;
-    let hud_h = 56.0_f64;
+    // Litt større enn selve pillen, så avrundede hjørner har transparent
+    // luft rundt (WebView2/DWM tegner ellers en rektangulær «ramme»).
+    let hud_w = 312.0_f64;
+    let hud_h = 64.0_f64;
     let saved_x = *state.hud_x.lock().unwrap();
     let saved_y = *state.hud_y.lock().unwrap();
 
@@ -343,17 +531,20 @@ fn enter_hud_mode(app: &tauri::AppHandle, win: &tauri::WebviewWindow) {
 }
 
 /// Velg Idle / Hud ut fra gjenstående tid (eller Locked hvis 0).
-/// Ctrl+Win kan tvinge HUD frem via `hud_manual_show`.
+/// Ctrl+Win kan tvinge HUD frem (`hud_manual_show`) eller skjule den
+/// midlertidig (`hud_manual_hide`), også når det er lite tid igjen.
 fn sync_unlock_window(app: &tauri::AppHandle, win: &tauri::WebviewWindow, remaining: u64) {
     if *app.state::<AppState>().settings_focus.lock().unwrap() {
         return;
     }
+    let state = app.state::<AppState>();
     if remaining == 0 {
-        *app.state::<AppState>().hud_manual_show.lock().unwrap() = false;
+        *state.hud_manual_show.lock().unwrap() = false;
+        *state.hud_manual_hide.lock().unwrap() = false;
         enter_locked_mode(app, win);
-    } else if remaining <= HUD_SHOW_BELOW_SECS
-        || *app.state::<AppState>().hud_manual_show.lock().unwrap()
-    {
+    } else if *state.hud_manual_hide.lock().unwrap() {
+        enter_unlocked_idle(app, win);
+    } else if remaining <= HUD_SHOW_BELOW_SECS || *state.hud_manual_show.lock().unwrap() {
         enter_hud_mode(app, win);
     } else {
         enter_unlocked_idle(app, win);
@@ -420,77 +611,101 @@ fn toggle_hud_hotkey(app: &tauri::AppHandle) {
         return;
     };
 
-    let manual = *state.hud_manual_show.lock().unwrap();
     let mode = *state.ui_mode.lock().unwrap();
-    if mode == UiMode::Hud && (manual || remaining > HUD_SHOW_BELOW_SECS) {
-        // Skjul igjen (bare når den ikke «må» vises pga. lite tid)
-        if remaining > HUD_SHOW_BELOW_SECS {
-            *state.hud_manual_show.lock().unwrap() = false;
-            enter_unlocked_idle(app, &win);
-        }
+    if mode == UiMode::Hud {
+        *state.hud_manual_show.lock().unwrap() = false;
+        *state.hud_manual_hide.lock().unwrap() = true;
+        enter_unlocked_idle(app, &win);
         return;
     }
 
+    *state.hud_manual_hide.lock().unwrap() = false;
     *state.hud_manual_show.lock().unwrap() = true;
     enter_hud_mode(app, &win);
     let _ = app.emit("time-tick", remaining);
     let _ = app.emit("hud-peek", remaining);
 }
 
-/// Windows: global Ctrl+Windows-hurtigtast (RegisterHotKey).
+/// Windows: global hurtigtast for tidboksen (standard Ctrl+Shift+H).
+/// Leser config fortløpende, så innstillingsendringer gjelder uten restart.
 #[cfg(windows)]
-fn spawn_ctrl_win_hotkey_thread(app: tauri::AppHandle) {
+fn spawn_hud_hotkey_thread(app: tauri::AppHandle) {
     std::thread::spawn(move || {
         use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-            RegisterHotKey, UnregisterHotKey, MOD_CONTROL, MOD_NOREPEAT, VK_LWIN, VK_RWIN,
+            RegisterHotKey, UnregisterHotKey,
         };
         use windows_sys::Win32::UI::WindowsAndMessaging::{
-            DispatchMessageW, GetMessageW, TranslateMessage, WM_HOTKEY, MSG,
+            DispatchMessageW, PeekMessageW, TranslateMessage, PM_REMOVE, WM_HOTKEY, MSG,
         };
 
-        const ID_LWIN: i32 = 1;
-        const ID_RWIN: i32 = 2;
+        const HOTKEY_ID: i32 = 1;
+        let mut registered: Option<(u32, u32)> = None;
 
-        unsafe {
-            // Ctrl + Windows-tast (venstre og høyre)
-            let ok_l = RegisterHotKey(
-                std::ptr::null_mut(),
-                ID_LWIN,
-                MOD_CONTROL | MOD_NOREPEAT,
-                VK_LWIN as u32,
-            );
-            let ok_r = RegisterHotKey(
-                std::ptr::null_mut(),
-                ID_RWIN,
-                MOD_CONTROL | MOD_NOREPEAT,
-                VK_RWIN as u32,
-            );
-            if ok_l == 0 && ok_r == 0 {
-                eprintln!("Klarte ikke å registrere Ctrl+Win-hurtigtast");
-                return;
-            }
-
-            let mut msg: MSG = std::mem::zeroed();
-            while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
-                if msg.message == WM_HOTKEY {
-                    toggle_hud_hotkey(&app);
+        loop {
+            // Mens brukeren velger ny hurtigtast: avregistrer midlertidig
+            // så kombinasjonen når WebView (ellers «spiser» RegisterHotKey den).
+            if HUD_HOTKEY_CAPTURE.load(Ordering::SeqCst) {
+                if registered.is_some() {
+                    unsafe {
+                        UnregisterHotKey(std::ptr::null_mut(), HOTKEY_ID);
+                    }
+                    registered = None;
                 }
-                let _ = TranslateMessage(&msg);
-                DispatchMessageW(&msg);
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                continue;
             }
 
-            UnregisterHotKey(std::ptr::null_mut(), ID_LWIN);
-            UnregisterHotKey(std::ptr::null_mut(), ID_RWIN);
+            let desired = {
+                let state = app.state::<AppState>();
+                let cfg = state.config.lock().unwrap();
+                parse_hud_hotkey(&cfg.hud_hotkey).unwrap_or_else(|_| {
+                    parse_hud_hotkey(&default_hud_hotkey()).expect("standard-hurtigtast")
+                })
+            };
+
+            if registered != Some(desired) {
+                unsafe {
+                    if registered.is_some() {
+                        UnregisterHotKey(std::ptr::null_mut(), HOTKEY_ID);
+                    }
+                    let ok = RegisterHotKey(
+                        std::ptr::null_mut(),
+                        HOTKEY_ID,
+                        desired.0,
+                        desired.1,
+                    );
+                    if ok == 0 {
+                        eprintln!(
+                            "Klarte ikke å registrere HUD-hurtigtast (allerede i bruk?)"
+                        );
+                        registered = None;
+                    } else {
+                        registered = Some(desired);
+                    }
+                }
+            }
+
+            unsafe {
+                let mut msg: MSG = std::mem::zeroed();
+                while PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+                    if msg.message == WM_HOTKEY {
+                        toggle_hud_hotkey(&app);
+                    }
+                    let _ = TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(50));
         }
     });
 }
 
 #[cfg(not(windows))]
-fn spawn_ctrl_win_hotkey_thread(_app: tauri::AppHandle) {}
+fn spawn_hud_hotkey_thread(_app: tauri::AppHandle) {}
 
 /// Windows: lavnivå tastaturhook som stopper Alt+F4 og Start-menyen
-/// (Win-tast) mens appen er synlig. Ctrl+Win slippes gjennom så
-/// tidspilleren fortsatt kan hentes frem.
+/// (Win-tast) mens appen er synlig.
 #[cfg(windows)]
 fn spawn_kiosk_keyboard_hook() {
     std::thread::spawn(|| {
@@ -525,10 +740,7 @@ fn spawn_kiosk_keyboard_hook() {
 
                     if BLOCK_WIN_KEY.load(Ordering::SeqCst) {
                         if vk == VK_LWIN as u32 || vk == VK_RWIN as u32 {
-                            let ctrl = GetAsyncKeyState(VK_CONTROL as i32) < 0;
-                            if !ctrl {
-                                return 1;
-                            }
+                            return 1;
                         }
                         // Ctrl+Esc åpner også Start-menyen
                         if vk == VK_ESCAPE as u32 && GetAsyncKeyState(VK_CONTROL as i32) < 0 {
@@ -567,13 +779,214 @@ fn snapshot_runtime(app: &tauri::AppHandle) -> RuntimeState {
     let earned_day_index = *state.earned_day_index.lock().unwrap();
     let hud_x = *state.hud_x.lock().unwrap();
     let hud_y = *state.hud_y.lock().unwrap();
+    let last_update_check = state.update_status.lock().unwrap().last_checked_at;
     RuntimeState {
         unlocked_until,
         earned_today_minutes,
         earned_day_index,
         hud_x,
         hud_y,
+        last_update_check,
     }
+}
+
+fn emit_update_status(app: &tauri::AppHandle) {
+    let state = app.state::<AppState>();
+    let status = state.update_status.lock().unwrap().clone();
+    let _ = app.emit("update-status", status);
+}
+
+fn with_update_status_mut<R>(app: &tauri::AppHandle, f: impl FnOnce(&mut UpdateStatus) -> R) -> R {
+    let state = app.state::<AppState>();
+    let mut status = state.update_status.lock().unwrap();
+    f(&mut status)
+}
+
+#[cfg(not(debug_assertions))]
+fn persist_last_update_check(app: &tauri::AppHandle, checked_at: u64) {
+    let mut runtime = snapshot_runtime(app);
+    runtime.last_update_check = checked_at;
+    save_runtime_state(app, &runtime);
+}
+
+/// Sjekker GitHub Releases for ny versjon. Installerer ikke — bare oppdaterer status.
+#[cfg(not(debug_assertions))]
+async fn check_for_update_inner(app: tauri::AppHandle, force: bool) {
+    let should_skip = with_update_status_mut(&app, |status| {
+        if status.checking || status.installing {
+            return true;
+        }
+        if !force
+            && status.last_checked_at > 0
+            && now_secs().saturating_sub(status.last_checked_at) < UPDATE_CHECK_INTERVAL_SECS
+        {
+            return true;
+        }
+        status.checking = true;
+        status.error = None;
+        false
+    });
+    if should_skip {
+        return;
+    }
+    emit_update_status(&app);
+
+    let result = async {
+        let updater = app.updater().map_err(|e| e.to_string())?;
+        updater.check().await.map_err(|e| e.to_string())
+    }
+    .await;
+
+    let checked_at = now_secs();
+    with_update_status_mut(&app, |status| {
+        status.checking = false;
+        status.last_checked_at = checked_at;
+        match result {
+            Ok(Some(update)) => {
+                status.available = true;
+                status.latest_version = Some(update.version.clone());
+                status.notes = update.body.clone();
+                status.error = None;
+            }
+            Ok(None) => {
+                status.available = false;
+                status.latest_version = None;
+                status.notes = None;
+                status.error = None;
+            }
+            Err(err) => {
+                status.error = Some(err);
+            }
+        }
+    });
+    persist_last_update_check(&app, checked_at);
+    emit_update_status(&app);
+}
+
+#[cfg(debug_assertions)]
+async fn check_for_update_inner(app: tauri::AppHandle, _force: bool) {
+    with_update_status_mut(&app, |status| {
+        status.checking = false;
+        status.available = false;
+        status.latest_version = None;
+        status.notes = None;
+        status.last_checked_at = now_secs();
+        status.error = None;
+    });
+    emit_update_status(&app);
+}
+
+#[cfg(not(debug_assertions))]
+async fn install_update_inner(app: tauri::AppHandle) -> Result<(), String> {
+    let early_err = with_update_status_mut(&app, |status| {
+        if status.installing {
+            return Some("Oppdatering pågår allerede.".to_string());
+        }
+        if status.checking {
+            return Some("Venter på oppdateringssjekk. Prøv igjen om litt.".to_string());
+        }
+        status.installing = true;
+        status.downloaded = 0;
+        status.total = None;
+        status.error = None;
+        None
+    });
+    if let Some(err) = early_err {
+        return Err(err);
+    }
+    emit_update_status(&app);
+
+    let updater = match app.updater() {
+        Ok(u) => u,
+        Err(e) => {
+            with_update_status_mut(&app, |status| {
+                status.installing = false;
+                status.error = Some(e.to_string());
+            });
+            emit_update_status(&app);
+            return Err(e.to_string());
+        }
+    };
+
+    let update = match updater.check().await {
+        Ok(Some(u)) => u,
+        Ok(None) => {
+            with_update_status_mut(&app, |status| {
+                status.installing = false;
+                status.available = false;
+                status.latest_version = None;
+                status.notes = None;
+                status.error = Some("Ingen ny versjon tilgjengelig.".into());
+            });
+            emit_update_status(&app);
+            return Err("Ingen ny versjon tilgjengelig.".into());
+        }
+        Err(e) => {
+            with_update_status_mut(&app, |status| {
+                status.installing = false;
+                status.error = Some(e.to_string());
+            });
+            emit_update_status(&app);
+            return Err(e.to_string());
+        }
+    };
+
+    with_update_status_mut(&app, |status| {
+        status.available = true;
+        status.latest_version = Some(update.version.clone());
+        status.notes = update.body.clone();
+    });
+    emit_update_status(&app);
+
+    let progress_app = app.clone();
+    let mut downloaded: u64 = 0;
+    let install_result = update
+        .download_and_install(
+            move |chunk_len, total| {
+                downloaded = downloaded.saturating_add(chunk_len as u64);
+                with_update_status_mut(&progress_app, |status| {
+                    status.downloaded = downloaded;
+                    status.total = total;
+                });
+                let _ = progress_app.emit(
+                    "update-progress",
+                    serde_json::json!({
+                        "downloaded": downloaded,
+                        "total": total,
+                    }),
+                );
+                emit_update_status(&progress_app);
+            },
+            || {},
+        )
+        .await;
+
+    match install_result {
+        Ok(()) => {
+            with_update_status_mut(&app, |status| {
+                status.installing = false;
+                status.available = false;
+                status.error = None;
+            });
+            emit_update_status(&app);
+            app.restart();
+            Ok(())
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            with_update_status_mut(&app, |status| {
+                status.installing = false;
+                status.error = Some(msg.clone());
+            });
+            emit_update_status(&app);
+            Err(msg)
+        }
+    }
+}
+
+#[cfg(debug_assertions)]
+async fn install_update_inner(_app: tauri::AppHandle) -> Result<(), String> {
+    Err("Oppdateringer er bare tilgjengelig i installerte release-bygg.".into())
 }
 
 /// Gjenopprett fullskjerm låseskjerm — f.eks. før innstillinger åpnes.
@@ -593,6 +1006,7 @@ fn begin_settings_ui(app: tauri::AppHandle, window: tauri::WebviewWindow) {
 #[tauri::command]
 fn end_settings_ui(app: tauri::AppHandle, window: tauri::WebviewWindow) {
     *app.state::<AppState>().settings_focus.lock().unwrap() = false;
+    set_hud_hotkey_capture(false);
     let until = *app.state::<AppState>().unlocked_until.lock().unwrap();
     let remaining = until.saturating_sub(now_secs());
     if remaining > 0 {
@@ -601,6 +1015,17 @@ fn end_settings_ui(app: tauri::AppHandle, window: tauri::WebviewWindow) {
     } else {
         enter_locked_mode(&app, &window);
     }
+}
+
+/// Pause global HUD-hurtigtast mens brukeren velger ny kombinasjon i UI.
+#[tauri::command]
+fn begin_hud_hotkey_capture() {
+    set_hud_hotkey_capture(true);
+}
+
+#[tauri::command]
+fn end_hud_hotkey_capture() {
+    set_hud_hotkey_capture(false);
 }
 
 /// Felles logikk for å låse opp: legger til `add_seconds` på toppen av
@@ -640,12 +1065,15 @@ fn roll_over_earned_day_if_needed(state: &AppState) {
 #[tauri::command]
 fn get_settings_public(state: State<AppState>) -> serde_json::Value {
     let cfg = state.config.lock().unwrap();
+    let hud_hotkey = normalize_hud_hotkey(&cfg.hud_hotkey)
+        .unwrap_or_else(|_| default_hud_hotkey());
     serde_json::json!({
         "unlockTime": cfg.unlock_time,
         "grantMinutes": cfg.grant_minutes,
         "secondsPerHit": cfg.seconds_per_hit,
         "maxEarnMinutesPerDay": cfg.max_earn_minutes_per_day,
         "autostart": cfg.autostart || is_windows_autostart_enabled(),
+        "hudHotkey": hud_hotkey,
         "needsSetup": !cfg.configured,
     })
 }
@@ -721,6 +1149,7 @@ fn update_settings(
     seconds_per_hit: u32,
     max_earn_minutes_per_day: u32,
     autostart: bool,
+    hud_hotkey: String,
     state: State<AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
@@ -735,11 +1164,13 @@ fn update_settings(
             cfg.pin_hash = hash_pin(trimmed);
         }
     }
+    let hud_hotkey = normalize_hud_hotkey(hud_hotkey.trim())?;
     cfg.unlock_time = unlock_time;
     cfg.grant_minutes = grant_minutes.max(1);
     cfg.seconds_per_hit = seconds_per_hit.max(1);
     cfg.max_earn_minutes_per_day = max_earn_minutes_per_day;
     cfg.autostart = autostart;
+    cfg.hud_hotkey = hud_hotkey;
     set_windows_autostart(autostart)?;
     save_config(&app, &cfg);
     Ok(())
@@ -821,23 +1252,36 @@ fn redeem_earned_time(
     Ok(granted)
 }
 
-/// Sjekker GitHub Releases for ny versjon og installerer stille hvis funnet.
-/// Feil (ingen nett, ingen ny release, osv.) ignoreres — appen skal alltid starte.
+#[tauri::command]
+fn get_update_status(state: State<AppState>) -> UpdateStatus {
+    state.update_status.lock().unwrap().clone()
+}
+
+#[tauri::command]
+async fn check_for_update(app: tauri::AppHandle) -> Result<UpdateStatus, String> {
+    check_for_update_inner(app.clone(), true).await;
+    let state = app.state::<AppState>();
+    let status = state.update_status.lock().unwrap().clone();
+    Ok(status)
+}
+
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+    install_update_inner(app).await
+}
+
+/// Sjekker GitHub Releases for ny versjon (daglig). Installerer bare når brukeren ber om det i innstillinger.
 #[cfg(not(debug_assertions))]
-async fn check_and_install_update(app: tauri::AppHandle) {
-    let Ok(updater) = app.updater() else {
-        return;
-    };
-    let Ok(Some(update)) = updater.check().await else {
-        return;
-    };
-    if update
-        .download_and_install(|_chunk, _total| {}, || {})
-        .await
-        .is_ok()
-    {
-        app.restart();
-    }
+fn spawn_update_checker(app: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        // Kort pause slik at UI rekker å komme opp først.
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        loop {
+            tauri::async_runtime::block_on(check_for_update_inner(app.clone(), false));
+            // Sjekk hver time om det er gått 24 timer siden sist.
+            std::thread::sleep(std::time::Duration::from_secs(60 * 60));
+        }
+    });
 }
 
 fn main() {
@@ -866,7 +1310,14 @@ fn main() {
                 hud_x: Mutex::new(runtime.hud_x),
                 hud_y: Mutex::new(runtime.hud_y),
                 hud_manual_show: Mutex::new(false),
+                hud_manual_hide: Mutex::new(false),
                 settings_focus: Mutex::new(false),
+                update_status: Mutex::new({
+                    let mut status =
+                        UpdateStatus::new(app.package_info().version.to_string());
+                    status.last_checked_at = runtime.last_update_check;
+                    status
+                }),
             });
 
             if let Some(win) = app.get_webview_window("main") {
@@ -880,8 +1331,8 @@ fn main() {
 
             setup_system_tray(app)?;
 
-            // Ctrl+Windows: hent frem / skjul tidspilleren
-            spawn_ctrl_win_hotkey_thread(app.handle().clone());
+            // Global hurtigtast: vis / skjul tidspilleren (standard Ctrl+Shift+H)
+            spawn_hud_hotkey_thread(app.handle().clone());
             // Blokker Alt+F4 og Start-menyen over låseskjermen
             spawn_kiosk_keyboard_hook();
 
@@ -909,16 +1360,10 @@ fn main() {
                 }
             });
 
-            // Automatisk oppdatering fra GitHub Releases (kun i release-bygg).
+            // Daglig oppdateringssjekk fra GitHub Releases (kun i release-bygg).
+            // Installasjon skjer bare når en voksen trykker «Oppdater» i innstillinger.
             #[cfg(not(debug_assertions))]
-            {
-                let update_handle = app.handle().clone();
-                std::thread::spawn(move || {
-                    // Kort pause slik at UI rekker å komme opp først.
-                    std::thread::sleep(std::time::Duration::from_secs(3));
-                    tauri::async_runtime::block_on(check_and_install_update(update_handle));
-                });
-            }
+            spawn_update_checker(app.handle().clone());
 
             Ok(())
         })
@@ -956,7 +1401,12 @@ fn main() {
             redeem_earned_time,
             ensure_locked_fullscreen,
             begin_settings_ui,
-            end_settings_ui
+            end_settings_ui,
+            begin_hud_hotkey_capture,
+            end_hud_hotkey_capture,
+            get_update_status,
+            check_for_update,
+            install_update
         ])
         .run(tauri::generate_context!())
         .expect("feil under oppstart av Tauri-appen");

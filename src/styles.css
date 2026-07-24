@@ -43,6 +43,7 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  background: transparent;
 }
 
 body {
@@ -107,6 +108,7 @@ body {
   align-items: center;
   justify-content: center;
   padding: 0;
+  background: transparent;
 }
 
 .hud-pill {
@@ -114,13 +116,10 @@ body {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  width: 100%;
-  height: 100%;
   background: #0a1410;
   border: 1px solid var(--panel-border);
-  border-radius: var(--radius-pill);
-  padding: 0 20px;
-  box-shadow: 0 8px 28px -6px rgba(0, 0, 0, 0.75);
+  border-radius: 16px;
+  padding: 0 12px 0 18px;
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
@@ -170,7 +169,21 @@ body.mode-hud.hud-urgent .hud-time {
   color: var(--text-muted);
 }
 
-/* Tauri: vinduet ER pillen — ingen ekstra luft */
+.hud-settings-btn {
+  margin-left: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.hud-settings-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Tauri: vinduet er transparent; pillen ligger inset så hjørnene
+   ikke får en rektangulær DWM-/WebView-ramme utenfor radiusen. */
 body.mode-hud {
   background: transparent !important;
   overflow: hidden;
@@ -186,9 +199,10 @@ body.mode-hud #hud-view {
 }
 
 body.mode-hud .hud-pill {
-  border-radius: 16px;
-  width: 100%;
-  height: 100%;
+  width: calc(100% - 16px);
+  height: calc(100% - 16px);
+  max-width: 296px;
+  box-shadow: none;
 }
 
 /* Nettleser-forhåndsvisning: unngå nettleserens verktøylinje øverst */
@@ -198,14 +212,18 @@ body.preview #hud-view {
   right: 24px;
   top: auto;
   left: auto;
-  width: 268px;
-  height: 56px;
+  width: 312px;
+  height: 64px;
   padding: 0;
   z-index: 99999;
 }
 
 body.preview.mode-hud #locked-view {
   display: none !important;
+}
+
+body.preview .hud-pill {
+  box-shadow: 0 8px 28px -6px rgba(0, 0, 0, 0.75);
 }
 
 /* ---------- Toppchrome: enhet / status, ekko av "Project / Industry" ---------- */
@@ -890,6 +908,64 @@ body.setup-mode #btn-settings {
   margin-top: 8px;
 }
 
+.settings-version {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.update-notes {
+  margin: 12px 0 14px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+}
+
+.settings-notes-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent-mint-solid);
+}
+
+.settings-notes-body {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-secondary, var(--text-faint));
+  white-space: pre-wrap;
+}
+
+.update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 8px 0 4px;
+}
+
+.update-progress {
+  margin: 10px 0 6px;
+}
+
+.update-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.update-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: var(--accent-mint-solid);
+  transition: width 0.15s ease-out;
+}
+
 .toggle-row {
   display: flex;
   align-items: flex-start;
@@ -918,6 +994,16 @@ body.setup-mode #btn-settings {
   font-size: 13px;
   font-weight: 600;
   color: var(--accent-mint-solid);
+}
+
+.hotkey-input {
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.hotkey-input:focus {
+  border-color: rgba(64, 255, 192, 0.45);
 }
 
 .field-label {

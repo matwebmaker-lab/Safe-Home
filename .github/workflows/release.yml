@@ -58,7 +58,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+          git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json CHANGELOG.md
           git commit -m "chore: bump version to ${{ steps.bump.outputs.version }}"
           git tag "${{ steps.bump.outputs.tag }}"
           git push origin HEAD:${{ github.ref_name }}
@@ -107,6 +107,20 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        shell: bash
+        run: |
+          VERSION="${{ needs.bump.outputs.version }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          {
+            echo "body<<EOF"
+            bun scripts/extract-changelog.mjs "$VERSION"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and publish
         uses: tauri-apps/tauri-action@v1
         env:
@@ -116,10 +130,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: "Safe Home v__VERSION__"
-          releaseBody: |
-            Installer for Safe Home.
-
-            Brukere med appen allerede installert får oppdateringen automatisk ved neste oppstart.
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: true
