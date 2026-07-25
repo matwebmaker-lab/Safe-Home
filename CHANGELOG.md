@@ -7,6 +7,18 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Lobby music in the garage with a mute/unmute button
+- Silver SVG icons on garage shop cards and coin prices
+
+### Changed
+
+- Lock screen shows the Safe Home logo
+- New app icon on Windows and other platforms
+- Clearer coin display in the garage wallet and buy buttons
+- Richer lighting and atmosphere in the 3D garage preview
+
 ## [0.2.0] - 2026-07-24
 
 ### Added
