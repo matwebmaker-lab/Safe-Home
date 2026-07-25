@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-24
+
 ### Added
 
 - Full-screen 3D garage: browse cars, paint, tracks, and upgrades on a live preview
