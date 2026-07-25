@@ -64,14 +64,11 @@
 
     <main class="stage">
       <section class="card" id="card">
-        <div class="icon-badge" id="icon-badge">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.6"/>
-            <path d="M12 7.5V12L15 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
+        <div class="icon-badge icon-badge--logo" id="icon-badge">
+          <img src="logo.png" alt="Safe Home" class="brand-logo" width="160" height="160" />
         </div>
 
-        <p class="eyebrow" id="card-eyebrow">Safe Home</p>
+        <p class="eyebrow" id="card-eyebrow" hidden>Safe Home</p>
         <h1 id="card-title">Tiden er ute!</h1>
         <p class="body-text" id="card-body">
           Denne enheten er låst på grunn av skjermtidsinnstillingene dine.
@@ -396,8 +393,8 @@
 
     <div class="gf-topbar">
       <button class="gf-topbtn" id="btn-shop-back" type="button"><span class="gf-arr">←</span> Tilbake</button>
-      <div class="gf-wallet"><span class="gf-coin">◆</span> <strong id="shop-coins">0</strong></div>
-      <span class="gf-title">GARASJE</span>
+      <div class="gf-wallet"><svg class="coin-svg" viewBox="0 0 64 64" aria-hidden="true"><defs><radialGradient id="coin-g" cx="0.35" cy="0.3" r="0.95"><stop offset="0" stop-color="#ffe9a8"/><stop offset="0.55" stop-color="#ffc94a"/><stop offset="1" stop-color="#c98f1d"/></radialGradient></defs><circle cx="32" cy="32" r="26" fill="url(#coin-g)" stroke="#a87614" stroke-width="4"/><text x="32" y="43" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" font-weight="900" fill="#8a5c10">$</text></svg> <strong id="shop-coins">0</strong></div>
+      <span class="gf-title-right"><button class="gf-music" id="gf-music-btn" type="button" title="Musikk av/på" aria-label="Musikk av/på">🔊</button> <span class="gf-title">GARASJE</span></span>
     </div>
 
     <div class="gf-panel gf-stats">

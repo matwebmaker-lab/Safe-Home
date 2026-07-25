@@ -7,6 +7,8 @@ import { createCarRunner } from "./game/car-runner.js";
 import { loadProfile, saveProfile, addCoins, purchase, recordBestSurvival } from "./game/profile.js";
 import { UPGRADES, PAINTS, MAPS, CARS, getPaint, getMap, getCar } from "./game/shop-data.js";
 import { createGarageScene } from "./game/garage-scene.js";
+import { createLobbyMusic } from "./game/lobby-music.js";
+import { COIN_SVG, CARD_ICON_SVGS } from "./game/garage-icons.js";
 
 const SURVIVAL_BONUS_RATE = 0.5;
 const SURVIVAL_BONUS_CAP = 180; // sekunder før rewardScale
@@ -621,9 +623,12 @@ const coinsValue = $("coins-value");
 const comboStat = $("game-combo");
 const shopPanel = $("shop-panel");
 
+// Myntbeløp med tusenskille, som i mockupen («12 456»)
+const fmtCoins = (n) => Number(n).toLocaleString("no-NO");
+
 function updateWalletDisplays() {
-  $("game-wallet-value").textContent = profile.coins;
-  $("shop-coins").textContent = profile.coins;
+  $("game-wallet-value").textContent = fmtCoins(profile.coins);
+  $("shop-coins").textContent = fmtCoins(profile.coins);
 }
 updateWalletDisplays();
 
@@ -690,6 +695,7 @@ function openGarageFromGame() {
   renderGarage();
   shopPanel.hidden = false;
   if (garageScene) garageScene.setActive(true);
+  lobbyMusic.start();
 }
 
 function setBombHealthHud(health) {
@@ -1002,6 +1008,7 @@ $("btn-open-shop").addEventListener("click", () => {
 
 $("btn-shop-back").addEventListener("click", async () => {
   if (garageScene) garageScene.setActive(false);
+  lobbyMusic.stop();
   shopPanel.hidden = true;
   $("card").classList.remove("shop-active");
   $("card").classList.add("game-active");
@@ -1026,6 +1033,14 @@ $("btn-shop-back").addEventListener("click", async () => {
 // 3D-scenen kommer fra garage-scene.js (delt med forhåndsvisningen).
 let garageScene = null;
 let garagePop = null; // hvilken popover som er åpen: "cars" | "paint" | "maps"
+
+// Lobby-musikk i garasjen (generert med WebAudio — ingen lydfiler)
+const lobbyMusic = createLobbyMusic();
+$("gf-music-btn").addEventListener("click", () => {
+  const playing = lobbyMusic.toggle();
+  $("gf-music-btn").textContent = playing ? "🔊" : "🔇";
+  $("gf-music-btn").classList.toggle("muted", !playing);
+});
 
 function effTurboLevel() {
   return Math.min(3, profile.upgrades.turbo + (getCar(profile.selectedCar).perk.turboBonus || 0));
@@ -1073,9 +1088,10 @@ function renderGarageStats() {
 }
 
 // ---------- Oppgraderingskort ----------
-const GARAGE_CARD_ICONS = { turbo: "🌀", magnet: "🧲", skjold: "🛡" };
+// Hvert kort har sitt eget sølv-ikon (som i mockupen) — se garage-icons.js
+const GARAGE_CARD_ICONS = { turbo: CARD_ICON_SVGS.turbo, magnet: CARD_ICON_SVGS.magnet, skjold: CARD_ICON_SVGS.skjold };
 const GARAGE_CARD_NAMES = { turbo: "MOTOR", magnet: "MAGNET", skjold: "SKJOLD" };
-const GARAGE_SOON_CARDS = [["◎", "DEKK"], ["🧪", "NITRO"]];
+const GARAGE_SOON_CARDS = [[CARD_ICON_SVGS.dekk, "DEKK"], [CARD_ICON_SVGS.nitro, "NITRO"]];
 
 function renderGarageCards() {
   const wrap = $("gf-cards");
@@ -1093,7 +1109,7 @@ function renderGarageCards() {
     const btn = document.createElement("button");
     btn.className = "buy" + (maxed ? " maxed" : "");
     btn.type = "button";
-    btn.textContent = maxed ? "✓ Fullt" : `${price} ◆`;
+    btn.innerHTML = maxed ? "✓ Fullt" : `${COIN_SVG} ${fmtCoins(price)}`;
     btn.disabled = !maxed && profile.coins < price;
     btn.addEventListener("click", () => {
       if (maxed || !purchase(profile, price)) return;
@@ -1138,7 +1154,7 @@ function renderGaragePopover(kind) {
       const afford = profile.coins >= item.price;
       const el = document.createElement("div");
       el.className = "gf-pop-item" + (selected ? " is-selected" : "") + (!owned && !afford ? " cant-afford" : "");
-      const priceLabel = selected ? "Valgt" : owned ? "Velg" : `${item.price} ◆`;
+      const priceLabel = selected ? "Valgt" : owned ? "Velg" : `${COIN_SVG} ${fmtCoins(item.price)}`;
       el.innerHTML = `
         <span class="nm">${item.name}</span>
         <span class="pr ${owned || selected ? "owned" : ""}">${priceLabel}</span>
@@ -1215,6 +1231,7 @@ function renderGarage() {
 // START LØPET: ut av garasjen og til modusvalg (bygg runner på nytt ved behov)
 $("btn-shop-start").addEventListener("click", () => {
   if (garageScene) garageScene.setActive(false);
+  lobbyMusic.stop();
   shopPanel.hidden = true;
   $("card").classList.remove("shop-active");
   $("card").classList.add("game-active");

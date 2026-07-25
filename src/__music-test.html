@@ -1,0 +1,20 @@
+<!doctype html>
+<html><head><meta charset="UTF-8"></head><body>
+<script type="module">
+  import { createLobbyMusic } from "./game/lobby-music.js";
+  const music = createLobbyMusic();
+  const out = document.createElement("pre");
+  out.id = "status";
+  document.body.appendChild(out);
+  try {
+    music.start();
+    setTimeout(() => {
+      out.textContent = "PLAYING=" + music.playing;
+      music.stop();
+      setTimeout(() => { out.textContent += " STOPPED=" + (music.playing === false); }, 900);
+    }, 1000);
+  } catch (e) {
+    out.textContent = "ERROR: " + e.message;
+  }
+</script>
+</body></html>

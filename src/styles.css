@@ -383,6 +383,25 @@ body.preview .hud-pill {
   height: 22px;
 }
 
+.icon-badge--logo {
+  width: auto;
+  height: auto;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  margin-bottom: 18px;
+}
+
+.brand-logo {
+  display: block;
+  width: min(168px, 46vw);
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: contain;
+  filter: drop-shadow(0 0 18px rgba(64, 255, 192, 0.22));
+}
+
 .icon-badge--success {
   border-color: rgba(64, 255, 192, 0.5);
   background: linear-gradient(160deg, rgba(64, 255, 192, 0.28), rgba(110, 253, 255, 0.08));
@@ -1859,7 +1878,7 @@ body.setup-mode #btn-settings {
   font-variant-numeric: tabular-nums;
 }
 
-.gf-wallet .gf-coin { color: #ffc94a; }
+.gf-wallet .coin-svg { width: 20px; height: 20px; display: block; }
 .gf-wallet strong { font-size: 17px; }
 
 .gf-title {
@@ -1980,6 +1999,7 @@ body.setup-mode #btn-settings {
 .gf-pop-item .nm { font-weight: 700; font-size: 14px; }
 .gf-pop-item .ds { grid-column: 1 / -1; font-size: 12px; color: var(--text-muted); line-height: 1.4; }
 .gf-pop-item .pr { font-size: 13px; font-weight: 700; color: #ffc94a; }
+.gf-pop-item .pr .coin-svg { width: 13px; height: 13px; vertical-align: -2px; }
 .gf-pop-item .pr.owned { color: var(--accent-mint); }
 .gf-pop-item.cant-afford { opacity: 0.55; cursor: default; }
 
@@ -2036,9 +2056,22 @@ body.setup-mode #btn-settings {
   padding: 9px 0;
 }
 .gf-card.soon { opacity: 0.55; }
-.gf-card .big-ico { font-size: 34px; margin: 10px 0 4px; }
+.gf-card .big-ico {
+  margin: 10px 0 4px;
+  display: flex;
+  justify-content: center;
+}
+.gf-card .big-ico .card-svg {
+  width: 46px;
+  height: 46px;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.55));
+}
 .gf-card .lvl { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
 .gf-card .buy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   width: 100%;
   padding: 7px 0;
   border: none;
@@ -2050,6 +2083,7 @@ body.setup-mode #btn-settings {
   cursor: pointer;
   font-variant-numeric: tabular-nums;
 }
+.gf-card .buy .coin-svg { width: 15px; height: 15px; flex: none; }
 .gf-card .buy:disabled { background: rgba(255, 255, 255, 0.12); color: var(--text-muted); cursor: default; }
 .gf-card .buy.maxed { background: rgba(64, 255, 192, 0.15); color: var(--accent-mint); }
 
@@ -2076,3 +2110,20 @@ body.setup-mode #btn-settings {
   .gf-cards { gap: 8px; }
   .gf-card { width: 108px; }
 }
+
+.gf-title-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gf-music {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(10, 16, 14, 0.82);
+  font-size: 15px;
+  cursor: pointer;
+}
+.gf-music.muted { opacity: 0.5; }

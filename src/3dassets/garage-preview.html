@@ -46,7 +46,7 @@
       border-radius: 999px; padding: 7px 8px 7px 14px;
       font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums;
     }
-    #wallet .coin { color: var(--gold); }
+    #wallet .coin-svg { width: 20px; height: 20px; display: block; }
     #wallet .plus {
       width: 28px; height: 28px; border-radius: 8px; border: none;
       background: var(--mint); color: #052018; font-size: 18px; font-weight: 800; cursor: pointer;
@@ -119,6 +119,7 @@
     .pop-item .nm { font-weight: 700; font-size: 14px; }
     .pop-item .ds { grid-column: 1 / -1; font-size: 12px; color: var(--muted); line-height: 1.4; }
     .pop-item .pr { font-size: 13px; font-weight: 700; color: var(--gold); }
+    .pop-item .pr .coin-svg { width: 13px; height: 13px; vertical-align: -2px; }
     .pop-item .pr.owned { color: var(--mint-bright); }
     .swatches { display: flex; flex-wrap: wrap; gap: 10px; padding: 6px; }
     .swatches button {
@@ -144,13 +145,19 @@
       margin: 0 -12px; padding: 9px 0;
     }
     .card.soon { opacity: 0.55; }
-    .card .big-ico { font-size: 34px; margin: 10px 0 4px; color: var(--text); }
+    .card .big-ico { margin: 10px 0 4px; display: flex; justify-content: center; }
+    .card .big-ico .card-svg {
+      width: 46px; height: 46px;
+      filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.55));
+    }
     .card .lvl { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
     .card .buy {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
       width: 100%; padding: 7px 0; border: none; border-radius: 8px;
       background: var(--mint); color: #052018; font-weight: 800; font-size: 13px;
       cursor: pointer; font-variant-numeric: tabular-nums;
     }
+    .card .buy .coin-svg { width: 15px; height: 15px; flex: none; }
     .card .buy:disabled { background: rgba(255,255,255,0.12); color: var(--muted); cursor: default; }
     .card .buy.maxed { background: rgba(74,255,192,0.15); color: var(--mint-bright); }
 
@@ -173,8 +180,11 @@
 
   <div id="topbar">
     <button class="topbtn" type="button"><span class="arr">←</span> Tilbake</button>
-    <div id="wallet"><span class="coin">◆</span> <span id="wallet-n">12 456</span> <button class="plus" type="button">+</button></div>
-    <button class="topbtn" type="button">⚙ Innstillinger</button>
+    <div id="wallet"><svg class="coin-svg" viewBox="0 0 64 64" aria-hidden="true"><defs><radialGradient id="coin-g" cx="0.35" cy="0.3" r="0.95"><stop offset="0" stop-color="#ffe9a8"/><stop offset="0.55" stop-color="#ffc94a"/><stop offset="1" stop-color="#c98f1d"/></radialGradient></defs><circle cx="32" cy="32" r="26" fill="url(#coin-g)" stroke="#a87614" stroke-width="4"/><text x="32" y="43" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" font-weight="900" fill="#8a5c10">$</text></svg> <span id="wallet-n">12 456</span> <button class="plus" type="button">+</button></div>
+    <span style="display:inline-flex;gap:10px;align-items:center">
+      <button class="topbtn" id="music-btn" type="button" title="Musikk av/på">🔊</button>
+      <button class="topbtn" type="button">⚙ Innstillinger</button>
+    </span>
   </div>
 
   <div class="panel" id="stats">
@@ -201,7 +211,18 @@
 
   <script type="module">
     import { createGarageScene } from "../game/garage-scene.js";
+    import { createLobbyMusic } from "../game/lobby-music.js";
     import { CARS, PAINTS, MAPS, UPGRADES, getCar, getPaint, getMap } from "../game/shop-data.js";
+    import { COIN_SVG, CARD_ICON_SVGS } from "../game/garage-icons.js";
+
+    // Lobby-musikk: nettlesere krever en bruker-geste før lyd kan starte
+    const music = createLobbyMusic();
+    window.addEventListener("pointerdown", () => music.start(), { once: true });
+    document.getElementById("music-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      const playing = music.toggle();
+      document.getElementById("music-btn").textContent = playing ? "🔊" : "🔇";
+    });
 
     // Tilstand (falsk lommebok — bare for forhåndsvisning)
     const state = {
@@ -260,9 +281,10 @@
     }
 
     // ---------- Oppgraderingskort ----------
-    const CARD_ICONS = { turbo: "🌀", magnet: "🧲", skjold: "🛡" };
+    // Sølv-ikonene deles med appen via garage-icons.js
+    const CARD_ICONS = { turbo: CARD_ICON_SVGS.turbo, magnet: CARD_ICON_SVGS.magnet, skjold: CARD_ICON_SVGS.skjold };
     const CARD_NAMES = { turbo: "MOTOR", magnet: "MAGNET", skjold: "SKJOLD" };
-    const SOON_CARDS = [["◎", "DEKK"], ["🧪", "NITRO"]];
+    const SOON_CARDS = [[CARD_ICON_SVGS.dekk, "DEKK"], [CARD_ICON_SVGS.nitro, "NITRO"]];
     function renderCards() {
       const wrap = document.getElementById("cards");
       wrap.innerHTML = "";
@@ -274,12 +296,12 @@
         card.className = "card";
         card.innerHTML = `
           <h3>${CARD_NAMES[up.id] || up.name}</h3>
-          <div class="big-ico">${CARD_ICONS[up.id] || "⚙"}</div>
+          <div class="big-ico">${CARD_ICONS[up.id] || CARD_ICON_SVGS.turbo}</div>
           <div class="lvl">${maxed ? "MAKS NIVÅ" : "NIVÅ " + level}</div>`;
         const btn = document.createElement("button");
         btn.className = "buy" + (maxed ? " maxed" : "");
         btn.type = "button";
-        btn.textContent = maxed ? "✓ Fullt" : `${fmt(price)} ◆`;
+        btn.innerHTML = maxed ? "✓ Fullt" : `${COIN_SVG} ${fmt(price)}`;
         btn.disabled = !maxed && state.wallet < price;
         btn.addEventListener("click", () => {
           if (maxed || state.wallet < price) return;
@@ -321,7 +343,7 @@
           item.className = "pop-item" + (state.car === c.id ? " is-selected" : "");
           item.innerHTML = `
             <span class="nm">${c.name}</span>
-            <span class="pr ${state.car === c.id ? "owned" : ""}">${state.car === c.id ? "Valgt" : fmt(c.price) + " ◆"}</span>
+            <span class="pr ${state.car === c.id ? "owned" : ""}">${state.car === c.id ? "Valgt" : COIN_SVG + " " + fmt(c.price)}</span>
             <span class="ds">${c.description}</span>`;
           item.addEventListener("click", () => {
             state.car = c.id;
@@ -357,7 +379,7 @@
           item.className = "pop-item" + (state.map === m.id ? " is-selected" : "");
           item.innerHTML = `
             <span class="nm">${m.name}</span>
-            <span class="pr ${state.map === m.id ? "owned" : ""}">${state.map === m.id ? "Valgt" : fmt(m.price) + " ◆"}</span>
+            <span class="pr ${state.map === m.id ? "owned" : ""}">${state.map === m.id ? "Valgt" : COIN_SVG + " " + fmt(m.price)}</span>
             <span class="ds">${m.description}</span>`;
           item.addEventListener("click", () => {
             state.map = m.id;

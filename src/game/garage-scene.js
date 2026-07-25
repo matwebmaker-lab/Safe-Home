@@ -28,6 +28,9 @@ function canvasTexture(size, draw, repeat = [1, 1]) {
   c.height = size[1];
   draw(c.getContext("2d"), size[0], size[1]);
   const tex = new THREE.CanvasTexture(c);
+  // Canvas-farger er sRGB — uten dette tolkes de som lineære verdier
+  // og hele scenen vaskes ut (lys grå i stedet for mørk som i mockupen)
+  tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(repeat[0], repeat[1]);
@@ -152,7 +155,9 @@ function makeGlowTexture() {
   g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 128, 128);
-  return new THREE.CanvasTexture(c);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
 // Neonskilt-tekstur
@@ -173,7 +178,9 @@ function neonSignTexture(text, color) {
   ctx.shadowBlur = 8;
   ctx.fillStyle = "#eafff6";
   ctx.fillText(text, 256, 68);
-  return new THREE.CanvasTexture(c);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
 // Plakat-tekstur (SPEED/GARAGE/RACING)
@@ -193,7 +200,9 @@ function posterTexture(word) {
   ctx.fillText(word, 0, -20);
   ctx.fillText(word, 0, 60);
   ctx.restore();
-  return new THREE.CanvasTexture(c);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
 // =====================================================================
@@ -205,27 +214,29 @@ export function createGarageScene(canvas, { lowGraphics = false } = {}) {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap; // myke skyggekanter
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMappingExposure = 0.9; // mørkere — skal føles som nattverkstedet i mockupen
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x060a09);
-  scene.fog = new THREE.Fog(0x060a09, 15, 32);
+  scene.fog = new THREE.Fog(0x060a09, 13, 30);
 
-  // PMREM-miljø: gir klarlakken ekte refleksjoner (dempet — ellers
-  // blåses hele scenen ut sammen med det øvrige lyset)
+  // PMREM-miljø: gir klarlakken ekte refleksjoner (sterkt dempet —
+  // ellers lysner rommet hele scenen og ødelegger nattstemningen)
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environmentIntensity = 0.15;
+  scene.environmentIntensity = 0.06;
 
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
   const orbit = { theta: Math.PI / 2 - 0.35, phi: 1.30, radius: 6.0, targetY: 0.85 };
 
   // ---------- Lys ----------
-  const hemi = new THREE.HemisphereLight(0x3a5a50, 0x0a0d0b, 0.85);
+  // Dempet grunnlys — kontrasten skal ligge i lyskjeglene og neonen,
+  // ikke i jevn belysning (mørkt som i mockupen).
+  const hemi = new THREE.HemisphereLight(0x3a5a50, 0x0a0d0b, 0.55);
   scene.add(hemi);
-  scene.add(new THREE.AmbientLight(0x5a6e66, 0.6));
+  scene.add(new THREE.AmbientLight(0x5a6e66, 0.35));
   for (const fx of [-3, 3]) {
-    const fill = new THREE.PointLight(0xa8ccc0, 10, 11, 1.6);
+    const fill = new THREE.PointLight(0xa8ccc0, 8, 11, 1.6);
     fill.position.set(fx, 3.9, -3);
     scene.add(fill);
   }
@@ -235,18 +246,19 @@ export function createGarageScene(canvas, { lowGraphics = false } = {}) {
   const reflector = new Reflector(new THREE.CircleGeometry(16, 48), {
     textureWidth: lowGraphics ? 512 : 1024,
     textureHeight: lowGraphics ? 512 : 1024,
-    color: 0x2e3632,
+    color: 0x4a5550,
     clipBias: 0.003,
   });
   reflector.rotation.x = -Math.PI / 2;
   scene.add(reflector);
-  // Betong-overlay dempker og gjør speilingen «ru», som vått betong
+  // Betong-overlayet er bare et tynt slør — speilet under dominerer,
+  // slik at neonlys og armaturer speiler seg som på vått gulv i mockupen
   const concreteTex = makeConcreteTexture();
   const floorOverlay = new THREE.Mesh(
     new THREE.CircleGeometry(16, 48),
     new THREE.MeshStandardMaterial({
-      map: concreteTex, transparent: true, opacity: 0.78,
-      roughness: 0.35, metalness: 0.35, depthWrite: false,
+      map: concreteTex, transparent: true, opacity: 0.35,
+      roughness: 0.2, metalness: 0.35, depthWrite: false,
     })
   );
   floorOverlay.rotation.x = -Math.PI / 2;
@@ -254,10 +266,10 @@ export function createGarageScene(canvas, { lowGraphics = false } = {}) {
   floorOverlay.receiveShadow = true;
   scene.add(floorOverlay);
 
-  function floorStreak(w, l, x, z, opacity) {
+  function floorStreak(w, l, x, z, opacity, color = 0xd8fff0) {
     const s = new THREE.Mesh(
       new THREE.PlaneGeometry(w, l),
-      new THREE.MeshBasicMaterial({ map: glowTex, color: 0xd8fff0, transparent: true, opacity, depthWrite: false })
+      new THREE.MeshBasicMaterial({ map: glowTex, color, transparent: true, opacity, depthWrite: false })
     );
     s.rotation.x = -Math.PI / 2;
     s.position.set(x, 0.015, z);
@@ -319,7 +331,9 @@ export function createGarageScene(canvas, { lowGraphics = false } = {}) {
     scene.add(light);
   }
   placeSign("UPGRADE", "#4affc0", 3.6, 0.9, -5.5, 3.0, -6.86, 12);
+  floorStreak(2.6, 5.0, -5.5, -4.2, 0.28, 0x4affc0); // grønn refleks i det våte gulvet
   placeSign("DRIVE →", "#6efdff", 2.4, 0.8, 4.0, 2.5, -6.86, 8);
+  floorStreak(1.8, 4.0, 4.0, -4.5, 0.24, 0x6efdff); // cyan refleks under DRIVE-skiltet
 
   const poster = new THREE.Mesh(
     new THREE.PlaneGeometry(1.1, 1.4),
@@ -434,7 +448,7 @@ export function createGarageScene(canvas, { lowGraphics = false } = {}) {
       new THREE.MeshBasicMaterial({ color: 0xf2fff8 })
     );
     tube.position.y = 3.35;
-    const spot = new THREE.SpotLight(0xe8fff4, 26, 13, 0.78, 0.45, 1.3);
+    const spot = new THREE.SpotLight(0xe8fff4, 48, 13, 0.78, 0.45, 1.3);
     spot.position.set(0, 3.3, 0);
     spot.target.position.set(0, 0, 0);
     spot.castShadow = true;
@@ -443,16 +457,15 @@ export function createGarageScene(canvas, { lowGraphics = false } = {}) {
     g.add(housing, tube, spot, spot.target);
     g.position.set(x, 0, z);
     scene.add(g);
-    floorStreak(1.6, 4.6, x, z + 2.2, 0.18);
+    floorStreak(1.6, 4.6, x, z + 2.2, 0.3);
   }
   tubeLight(-1.1, -2.6);
   tubeLight(1.4, -2.2);
   tubeLight(-0.9, 2.4);
   tubeLight(1.2, 2.8);
-  const frontFill = new THREE.PointLight(0xa8ccc0, 2.5, 11, 1.6);
+  const frontFill = new THREE.PointLight(0xa8ccc0, 1.2, 11, 1.6);
   frontFill.position.set(0, 4.2, 4.0);
   scene.add(frontFill);
-  floorStreak(1.4, 3.2, -5.6, -4.6, 0.12);
 
   // ---------- Trafikkone ----------
   const cone = new THREE.Mesh(
@@ -484,7 +497,7 @@ export function createGarageScene(canvas, { lowGraphics = false } = {}) {
     dustGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({
       color: 0xbfe8d8, size: 0.02, sizeAttenuation: true,
-      transparent: true, opacity: 0.45,
+      transparent: true, opacity: 0.25,
     }));
     scene.add(dust);
   }
@@ -499,7 +512,7 @@ export function createGarageScene(canvas, { lowGraphics = false } = {}) {
   if (!lowGraphics) {
     composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(1024, 1024), 0.35, 0.4, 1.15);
+    const bloom = new UnrealBloomPass(new THREE.Vector2(1024, 1024), 0.45, 0.4, 1.15);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
   }
