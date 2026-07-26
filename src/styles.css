@@ -634,7 +634,7 @@ h1 {
 
 .game-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
@@ -642,17 +642,124 @@ h1 {
 
 .game-head .pin-label {
   margin: 0;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
-.game-earned {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-muted);
+/* ---------- Lommebok + opptjent tid ---------- */
+.resource-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.resource-coins,
+.resource-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(10, 16, 14, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  padding: 6px 14px 6px 10px;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.game-earned strong {
+.resource-coins .coin-svg {
+  width: 28px;
+  height: 28px;
+  display: block;
+  flex-shrink: 0;
+}
+
+.resource-coins strong {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  color: #ffd56a;
+  letter-spacing: -0.02em;
+}
+
+.resource-time-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.resource-time strong {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
   color: var(--accent-mint-solid);
+}
+
+.resource-strip--garage .resource-coins strong {
+  font-size: 28px;
+}
+
+.resource-strip--garage .resource-coins .coin-svg {
+  width: 30px;
+  height: 30px;
+}
+
+.resource-coins.stat-pop,
+.resource-time.stat-pop {
+  animation: stat-pop 0.45s ease-out;
+}
+
+.resource-time.time-flash {
+  animation: time-flash 0.55s ease-out;
+  border-color: rgba(64, 255, 192, 0.55);
+}
+
+@keyframes stat-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+
+@keyframes time-flash {
+  0% { box-shadow: 0 0 0 0 rgba(64, 255, 192, 0.55); }
+  40% { box-shadow: 0 0 18px 2px rgba(64, 255, 192, 0.35); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+#stat-fx-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10000;
+  overflow: hidden;
+}
+
+.stat-fx-coin {
+  position: fixed;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  will-change: transform, opacity;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.45));
+}
+
+.stat-fx-coin .coin-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.stat-fx-plus {
+  position: fixed;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--accent-mint-solid);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+  will-change: transform, opacity;
   font-variant-numeric: tabular-nums;
 }
 
@@ -690,10 +797,26 @@ body.game-immersive .chrome,
 body.game-immersive #icon-badge,
 body.game-immersive #card-body,
 body.game-immersive .card > h1,
-body.game-immersive .game-head,
+body.game-immersive .game-head .pin-label,
 body.game-immersive .game-budget,
 body.game-immersive #game-error {
   display: none !important;
+}
+
+body.game-immersive .game-head {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 45;
+  margin: 0;
+  padding: 0;
+  width: auto;
+  pointer-events: none;
+}
+
+body.game-immersive .game-head .resource-strip {
+  pointer-events: none;
 }
 
 body.game-immersive .stage,
@@ -748,18 +871,6 @@ body.game-immersive .game-actions {
 body.game-immersive .car-hud-fs-btn {
   color: var(--accent-mint);
   border-color: rgba(64, 255, 192, 0.45);
-}
-
-body.game-immersive .car-hud-math {
-  top: 28px;
-}
-
-body.game-immersive .car-hud-question {
-  font-size: clamp(36px, 5.5vw, 64px);
-  padding: 14px 36px;
-  border-radius: 12px;
-  letter-spacing: 0.06em;
-  border-width: 2px;
 }
 
 body.game-immersive .car-hud-hint {
@@ -1520,45 +1631,6 @@ body.setup-mode #btn-settings {
   }
 }
 
-/* ---------- Oppgave: lite spørsmål øverst (svar = sirkler på veien) ---------- */
-.car-hud-math {
-  position: absolute;
-  left: 50%;
-  top: 44px;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0;
-  z-index: 2;
-  pointer-events: none;
-}
-
-.car-hud-question {
-  position: static;
-  transform: none;
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  color: #fff;
-  background: rgba(40, 20, 60, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 6px;
-  padding: 6px 18px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.car-hud-question[hidden] {
-  display: none !important;
-}
-
-/* Svarene står på veien — ikke ekstra gule brikker i veien */
-.car-hud-answers {
-  display: none !important;
-}
-
 /* ---------- Garasje (bilbutikk) ---------- */
 .card.shop-active {
   max-width: min(720px, 96vw);
@@ -1908,21 +1980,6 @@ body.setup-mode #btn-settings {
 
 .gf-arr { font-size: 26px; font-weight: 400; line-height: 1; }
 
-.gf-wallet {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(10, 16, 14, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 999px;
-  padding: 7px 16px;
-  font-size: 17px;
-  font-variant-numeric: tabular-nums;
-}
-
-.gf-wallet .coin-svg { width: 20px; height: 20px; display: block; }
-.gf-wallet strong { font-size: 17px; }
-
 .gf-title {
   font-size: 15px;
   font-weight: 800;
@@ -2151,6 +2208,9 @@ body.setup-mode #btn-settings {
   .gf-stats, .gf-perk { display: none; }
   .gf-cards { gap: 8px; }
   .gf-card { width: 108px; }
+  .resource-strip--garage .resource-coins strong { font-size: 22px; }
+  .resource-strip--garage .resource-time strong { font-size: 15px; }
+  .resource-time-label { display: none; }
 }
 
 .gf-title-right {

@@ -930,33 +930,33 @@ export function createQuestionPlate(text = "3 × 5") {
 
   function makeTex(t) {
     const c = document.createElement("canvas");
-    c.width = 512;
-    c.height = 160;
+    c.width = 640;
+    c.height = 200;
     const ctx = c.getContext("2d");
-    ctx.clearRect(0, 0, 512, 160);
+    ctx.clearRect(0, 0, 640, 200);
     // Avrundet lilla-outline boble (Highway-referanse)
-    const r = 28;
+    const r = 34;
     ctx.beginPath();
-    ctx.moveTo(r, 12);
-    ctx.lineTo(512 - r, 12);
-    ctx.quadraticCurveTo(500, 12, 500, 12 + r);
-    ctx.lineTo(500, 148 - r);
-    ctx.quadraticCurveTo(500, 148, 512 - r, 148);
-    ctx.lineTo(r, 148);
-    ctx.quadraticCurveTo(12, 148, 12, 148 - r);
-    ctx.lineTo(12, 12 + r);
-    ctx.quadraticCurveTo(12, 12, r, 12);
+    ctx.moveTo(r, 14);
+    ctx.lineTo(640 - r, 14);
+    ctx.quadraticCurveTo(626, 14, 626, 14 + r);
+    ctx.lineTo(626, 186 - r);
+    ctx.quadraticCurveTo(626, 186, 640 - r, 186);
+    ctx.lineTo(r, 186);
+    ctx.quadraticCurveTo(14, 186, 14, 186 - r);
+    ctx.lineTo(14, 14 + r);
+    ctx.quadraticCurveTo(14, 14, r, 14);
     ctx.closePath();
     ctx.fillStyle = "rgba(12, 8, 28, 0.88)";
     ctx.fill();
-    ctx.lineWidth = 6;
+    ctx.lineWidth = 7;
     ctx.strokeStyle = "rgba(170, 120, 255, 0.95)";
     ctx.stroke();
     ctx.fillStyle = "#f4f0ff";
-    ctx.font = "bold 72px Arial Black, Impact, sans-serif";
+    ctx.font = "bold 96px Arial Black, Impact, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(String(t), 256, 86);
+    ctx.fillText(String(t), 320, 108);
     const tex = new THREE.CanvasTexture(c);
     tex.premultiplyAlpha = false;
     return tex;
@@ -965,8 +965,8 @@ export function createQuestionPlate(text = "3 × 5") {
   const mat = new THREE.MeshBasicMaterial({
     map: makeTex(text), transparent: true, depthWrite: false, side: THREE.DoubleSide,
   });
-  const face = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.3), mat);
-  face.position.y = 3.2;
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(5.4, 1.7), mat);
+  face.position.y = 3.4;
   face.rotation.x = -0.2;
   face.name = "questionFace";
   g.add(face);

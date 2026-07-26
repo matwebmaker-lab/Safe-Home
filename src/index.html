@@ -180,7 +180,16 @@
         <div class="game-panel" id="game-panel" hidden>
           <div class="game-head">
             <p class="pin-label">Kjør gjennom den hvite sirkelen med riktig svar — unngå bilene</p>
-            <p class="game-earned">Opptjent: <strong id="game-earned-value">00:00</strong> · Lommebok: <strong id="game-wallet-value">0</strong> mynter</p>
+            <div class="resource-strip" id="game-resource-strip" aria-live="polite">
+              <div class="resource-coins" title="Lommebok">
+                <svg class="coin-svg" viewBox="0 0 64 64" aria-hidden="true"><defs><radialGradient id="coin-g-game" cx="0.35" cy="0.3" r="0.95"><stop offset="0" stop-color="#ffe9a8"/><stop offset="0.55" stop-color="#ffc94a"/><stop offset="1" stop-color="#c98f1d"/></radialGradient></defs><circle cx="32" cy="32" r="26" fill="url(#coin-g-game)" stroke="#a87614" stroke-width="4"/><text x="32" y="43" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" font-weight="900" fill="#8a5c10">$</text></svg>
+                <strong id="game-wallet-value">0</strong>
+              </div>
+              <div class="resource-time" title="Opptjent tid">
+                <span class="resource-time-label">Opptjent</span>
+                <strong id="game-earned-value">00:00</strong>
+              </div>
+            </div>
           </div>
           <div class="car-game-wrap" id="car-game-wrap">
             <canvas id="car-game-canvas" aria-label="Highway gangetabell-spill"></canvas>
@@ -196,10 +205,6 @@
                 <div class="car-bomb-track" aria-hidden="true">
                   <div class="car-bomb-fill" id="car-bomb-fill"></div>
                 </div>
-              </div>
-              <div class="car-hud-math">
-                <div class="car-hud-question" id="car-hud-question" hidden>3 × 5 = ?</div>
-                <div class="car-hud-answers" id="car-hud-answers" hidden></div>
               </div>
               <span class="car-hud-hint">&larr; &rarr; bytt fil · W/&uarr; gass · S/&darr; brems</span>
             </div>
@@ -428,7 +433,16 @@
 
     <div class="gf-topbar">
       <button class="gf-topbtn" id="btn-shop-back" type="button"><span class="gf-arr">←</span> Tilbake</button>
-      <div class="gf-wallet"><svg class="coin-svg" viewBox="0 0 64 64" aria-hidden="true"><defs><radialGradient id="coin-g" cx="0.35" cy="0.3" r="0.95"><stop offset="0" stop-color="#ffe9a8"/><stop offset="0.55" stop-color="#ffc94a"/><stop offset="1" stop-color="#c98f1d"/></radialGradient></defs><circle cx="32" cy="32" r="26" fill="url(#coin-g)" stroke="#a87614" stroke-width="4"/><text x="32" y="43" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" font-weight="900" fill="#8a5c10">$</text></svg> <strong id="shop-coins">0</strong></div>
+      <div class="resource-strip resource-strip--garage" id="shop-resource-strip" aria-live="polite">
+        <div class="resource-coins" title="Lommebok">
+          <svg class="coin-svg" viewBox="0 0 64 64" aria-hidden="true"><defs><radialGradient id="coin-g" cx="0.35" cy="0.3" r="0.95"><stop offset="0" stop-color="#ffe9a8"/><stop offset="0.55" stop-color="#ffc94a"/><stop offset="1" stop-color="#c98f1d"/></radialGradient></defs><circle cx="32" cy="32" r="26" fill="url(#coin-g)" stroke="#a87614" stroke-width="4"/><text x="32" y="43" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" font-weight="900" fill="#8a5c10">$</text></svg>
+          <strong id="shop-coins">0</strong>
+        </div>
+        <div class="resource-time" title="Opptjent tid">
+          <span class="resource-time-label">Opptjent</span>
+          <strong id="shop-earned-value">00:00</strong>
+        </div>
+      </div>
       <span class="gf-title-right"><button class="gf-music" id="gf-music-btn" type="button" title="Musikk av/på" aria-label="Musikk av/på">🔊</button> <span class="gf-title">GARASJE</span></span>
     </div>
 
@@ -452,6 +466,8 @@
     <div class="gf-cards" id="gf-cards"></div>
     <button id="btn-shop-start" class="gf-start" type="button">🏁 START LØPET</button>
   </div>
+
+  <div id="stat-fx-layer" aria-hidden="true"></div>
 
   <script type="module" src="main.js"></script>
 </body>

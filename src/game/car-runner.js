@@ -750,7 +750,7 @@ export function createCarRunner(canvas, options = {}) {
       bumpCombo();
       coinsCollected += QUESTION_BONUS_COINS;
       opts.onEarn(secondsPerCoin() * QUESTION_BONUS_COINS);
-      for (let i = 0; i < QUESTION_BONUS_COINS; i++) opts.onCoinCollect();
+      opts.onCoinCollect(QUESTION_BONUS_COINS);
       flashCar(COLOR_MINT);
       effects.glory(pos);
       opts.onStatsUpdate({ combo, coinsCollected });
@@ -802,7 +802,7 @@ export function createCarRunner(canvas, options = {}) {
     const base = secondsPerCoin();
     const earned = base + streakBonus(combo, base);
     opts.onEarn(earned);
-    opts.onCoinCollect();
+    opts.onCoinCollect(1);
     opts.onStatsUpdate({ combo, coinsCollected });
   }
 

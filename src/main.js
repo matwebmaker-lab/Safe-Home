@@ -9,6 +9,7 @@ import { UPGRADES, PAINTS, MAPS, CARS, getPaint, getMap, getCar } from "./game/s
 import { createGarageScene } from "./game/garage-scene.js";
 import { createLobbyMusic } from "./game/lobby-music.js";
 import { COIN_SVG, CARD_ICON_SVGS } from "./game/garage-icons.js";
+import { flyCoinTo, bumpTime } from "./game/stat-fx.js";
 
 const SURVIVAL_BONUS_RATE = 0.5;
 const SURVIVAL_BONUS_CAP = 180; // sekunder før rewardScale
@@ -648,6 +649,19 @@ function updateWalletDisplays() {
   $("game-wallet-value").textContent = fmtCoins(profile.coins);
   $("shop-coins").textContent = fmtCoins(profile.coins);
 }
+
+function visibleWalletEl() {
+  return shopPanel && !shopPanel.hidden ? $("shop-coins") : $("game-wallet-value");
+}
+
+function visibleEarnedEl() {
+  return shopPanel && !shopPanel.hidden ? $("shop-earned-value") : $("game-earned-value");
+}
+
+function coinFlyFromEl() {
+  return $("car-game-wrap") || $("car-game-canvas");
+}
+
 updateWalletDisplays();
 
 $("btn-earn-time").addEventListener("click", () => {
@@ -710,6 +724,8 @@ function openGarageFromGame() {
   gamePanel.hidden = true;
   $("card").classList.remove("game-active");
   $("card").classList.add("shop-active");
+  updateWalletDisplays();
+  updateGameEarnedDisplay();
   renderGarage();
   shopPanel.hidden = false;
   if (garageScene) garageScene.setActive(true);
@@ -825,41 +841,24 @@ async function ensureCarRunner() {
       upgrades: { ...profile.upgrades },
       theme: getMap(profile.selectedMap).theme,
       onEarn: (seconds) => {
+        const from = gameEarnedSeconds;
         gameEarnedSeconds += seconds;
-        updateGameEarnedDisplay();
+        animateEarnedTime(from);
       },
       onComboBreak: () => {},
       onStatsUpdate: updateGameStatsHud,
-      onCoinCollect: () => {
-        addCoins(profile, 1);
+      onCoinCollect: (n = 1) => {
+        const count = Math.max(1, n | 0);
+        addCoins(profile, count);
         saveProfile(profile);
         updateWalletDisplays();
+        flyCoinTo(visibleWalletEl(), {
+          fromEl: coinFlyFromEl(),
+          count: Math.min(count, 3),
+        });
       },
       onBombHealth: setBombHealthHud,
-      onQuestion: (question) => {
-        const el = $("car-hud-question");
-        const answersEl = $("car-hud-answers");
-        if (question) {
-          el.textContent = question.text;
-          el.hidden = false;
-          answersEl.textContent = "";
-          const laneLabels = ["Fil 1", "Fil 2", "Fil 3", "Fil 4"];
-          (question.answers || []).forEach((value, i) => {
-            const chip = document.createElement("div");
-            chip.className = "car-answer-chip";
-            const small = document.createElement("small");
-            small.textContent = laneLabels[i] || `Fil ${i + 1}`;
-            chip.appendChild(small);
-            chip.appendChild(document.createTextNode(String(value)));
-            answersEl.appendChild(chip);
-          });
-          answersEl.hidden = false;
-        } else {
-          el.hidden = true;
-          answersEl.hidden = true;
-          answersEl.textContent = "";
-        }
-      },
+      onQuestion: () => {},
       onShieldUsed: () => {
         profile.upgrades.skjold = 0;
         saveProfile(profile);
@@ -903,8 +902,9 @@ function showGameOver(payload = {}) {
   const capped = Math.min(SURVIVAL_BONUS_CAP, survivalSeconds);
   const bonus = Math.floor(capped * SURVIVAL_BONUS_RATE * rewardScale);
   if (bonus > 0) {
+    const from = gameEarnedSeconds;
     gameEarnedSeconds += bonus;
-    updateGameEarnedDisplay();
+    animateEarnedTime(from);
   }
 
   recordBestSurvival(profile, mode, survivalSeconds);
@@ -946,7 +946,23 @@ function stopGame() {
 }
 
 function updateGameEarnedDisplay() {
-  $("game-earned-value").textContent = formatMMSS(gameEarnedSeconds);
+  const text = formatMMSS(gameEarnedSeconds);
+  $("game-earned-value").textContent = text;
+  const shopEarned = $("shop-earned-value");
+  if (shopEarned) shopEarned.textContent = text;
+}
+
+/** Oppdater den skjulte tid-telleren; animer den synlige. */
+function animateEarnedTime(fromSeconds) {
+  const visible = visibleEarnedEl();
+  const other =
+    visible?.id === "shop-earned-value" ? $("game-earned-value") : $("shop-earned-value");
+  if (other) other.textContent = formatMMSS(gameEarnedSeconds);
+  bumpTime(visible, {
+    fromSeconds,
+    toSeconds: gameEarnedSeconds,
+    format: formatMMSS,
+  });
 }
 
 async function cashOutGame() {
