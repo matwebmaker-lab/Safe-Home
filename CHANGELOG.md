@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-25
+
 ### Added
 
 - Lobby music in the garage with a mute/unmute button
