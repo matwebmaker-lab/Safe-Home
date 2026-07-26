@@ -44,6 +44,11 @@ Settings. Release notes and documentation are always written in English.
 - **PIN on uninstall** — the NSIS uninstaller requires the same adult PIN as
   in the app before Safe Home can be removed (automatic updates skip the PIN
   check).
+- **Watchdog service** — a Windows service restarts Safe Home if the main
+  process is closed (for example from Task Manager). Install while logged into
+  the account that should be locked; approve the one-time administrator prompt.
+  The service is machine-wide, but it only relaunches the lock screen for that
+  designated user.
 
 The default PIN is **1234** — change it in the in-app settings panel anytime.
 
@@ -246,6 +251,8 @@ the PIN check, so updates work as before.
 
 - Applies to the NSIS installer (`.exe` from Releases) — that is the only
   install form that is built.
+- The installer requires **administrator** once (per-machine install under
+  Program Files) so it can register the watchdog Windows service.
 - Silent uninstall (`/S`) without `/UPDATE` is aborted so the PIN cannot be
   skipped.
 - If no PIN is set yet (first-run setup not completed), the app can be
@@ -253,6 +260,21 @@ the PIN check, so updates work as before.
 - This is an extra barrier — a user with administrator rights can still bypass
   it other ways. Give the child a **standard user** account (not
   administrator) for best protection.
+
+## Watchdog service
+
+Safe Home installs a Windows service named **Safe Home Watchdog**
+(`SafeHomeWatchdog`). It runs as LocalSystem and checks every few seconds
+whether the main app is running. If it is not, and the designated user is
+logged on, the service starts Safe Home again in that user’s session.
+
+- **Install while logged into the locked account** (typically the child’s),
+  then approve the administrator UAC prompt. The installer records that user’s
+  SID in `%ProgramData%\Safe Home\watchdog.json`.
+- Other Windows accounts on the PC are not auto-locked by the service.
+- Updates and uninstall pause or remove the service so it does not fight
+  intentional exits.
+- A child on a standard (non-admin) account generally cannot stop the service.
 
 ## What this app deliberately does *not* do
 
@@ -264,7 +286,9 @@ the earn-time game, and the HUD box — not a full parental-control platform:
   from another script). Once it is shown and a period of time runs out, it
   handles switching between locked and HUD mode itself.
 - It does **not block** Alt+Tab, Task Manager, or other OS-level ways to leave
-  the window — that needs system-level “kiosk mode” hooks outside this
+  the window — ending the process in Task Manager is temporary because the
+  watchdog service starts Safe Home again, but a user with administrator
+  rights can still stop the service. Full kiosk lockdown is outside this
   project’s scope.
 - The game requires WebGL (WebView2 on Windows 10/11 supports this). If WebGL
   is missing, a clear error is shown instead of the game.
@@ -299,9 +323,11 @@ safe-home/
 │   └── vendor/             three.module.min.js + three.core.min.js (offline)
 ├── src-tauri/              Rust backend
 │   ├── src/main.rs         Commands, window switching, background thread, auto-update
+│   ├── src/bin/            Windows watchdog service binary
+│   ├── src/watchdog_ctl.rs Pause/resume helpers for the watchdog
 │   ├── Cargo.toml
 │   ├── tauri.conf.json     Window + updater endpoint
-│   ├── windows/            NSIS hooks + PIN check on uninstall
+│   ├── windows/            NSIS hooks, PIN check, watchdog register/unregister
 │   └── capabilities/
 └── package.json
 ```

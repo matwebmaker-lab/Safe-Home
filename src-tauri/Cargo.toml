@@ -4,6 +4,14 @@ version = "0.4.0"
 description = "Safe Home — skjermtidslås for familien, med eget design"
 edition = "2021"
 
+[[bin]]
+name = "safe-home"
+path = "src/main.rs"
+
+[[bin]]
+name = "safe-home-watchdog"
+path = "src/bin/safe-home-watchdog.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -16,8 +24,15 @@ serde_json = "1"
 sha2 = "0.10"
 
 [target.'cfg(windows)'.dependencies]
+windows-service = "0.8"
 windows-sys = { version = "0.59", features = [
   "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+  "Win32_System_Environment",
+  "Win32_System_ProcessStatus",
+  "Win32_System_RemoteDesktop",
+  "Win32_System_Threading",
   "Win32_UI_WindowsAndMessaging",
   "Win32_UI_Input_KeyboardAndMouse",
 ] }

@@ -7,6 +7,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Windows watchdog service that restarts Safe Home if someone closes the main app (for example from Task Manager)
+- Install-time setup that ties the watchdog to the logged-in account so only that user gets auto-restart
+
+### Changed
+
+- Installer now asks for administrator once and installs for the whole PC (Program Files), so the watchdog service can be registered
+
 ## [0.4.0] - 2026-07-26
 
 ### Added

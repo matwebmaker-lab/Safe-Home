@@ -43,11 +43,13 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "windows/uninstall-pin.ps1": "uninstall-pin.ps1"
+      "windows/uninstall-pin.ps1": "uninstall-pin.ps1",
+      "windows/register-watchdog.ps1": "register-watchdog.ps1",
+      "windows/unregister-watchdog.ps1": "unregister-watchdog.ps1"
     },
     "windows": {
       "nsis": {
-        "installMode": "currentUser",
+        "installMode": "perMachine",
         "installerHooks": "./windows/hooks.nsh"
       }
     }

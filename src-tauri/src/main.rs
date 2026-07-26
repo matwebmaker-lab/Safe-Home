@@ -22,6 +22,9 @@ static BLOCK_WIN_KEY: AtomicBool = AtomicBool::new(true);
 /// Når true: HUD-hurtigtasten er midlertidig avregistrert (bruker velger ny kombinasjon).
 static HUD_HOTKEY_CAPTURE: AtomicBool = AtomicBool::new(false);
 
+#[cfg(windows)]
+mod watchdog_ctl;
+
 fn set_block_win_key(block: bool) {
     BLOCK_WIN_KEY.store(block, Ordering::SeqCst);
 }
@@ -980,6 +983,10 @@ async fn install_update_inner(app: tauri::AppHandle) -> Result<(), String> {
     });
     emit_update_status(&app);
 
+    // Prevent the watchdog service from respawning us during quiet NSIS update.
+    #[cfg(windows)]
+    watchdog_ctl::pause_watchdog(10 * 60);
+
     let progress_app = app.clone();
     let mut downloaded: u64 = 0;
     let install_result = update
@@ -1016,6 +1023,8 @@ async fn install_update_inner(app: tauri::AppHandle) -> Result<(), String> {
         }
         Err(e) => {
             let msg = e.to_string();
+            #[cfg(windows)]
+            watchdog_ctl::clear_watchdog_pause();
             with_update_status_mut(&app, |status| {
                 status.installing = false;
                 status.error = Some(msg.clone());
@@ -1387,6 +1396,10 @@ fn main() {
             }
 
             setup_system_tray(app)?;
+
+            // Watchdog may have been paused for an update — allow respawn again.
+            #[cfg(windows)]
+            watchdog_ctl::clear_watchdog_pause();
 
             // Global hurtigtast: vis / skjul tidspilleren (standard Ctrl+Shift+H)
             spawn_hud_hotkey_thread(app.handle().clone());
