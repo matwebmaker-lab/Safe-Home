@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-26
+
 ### Added
 
 - Watchdog restores Safe Home if someone deletes the program files, then shows
