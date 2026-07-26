@@ -9,15 +9,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Windows watchdog service that restarts Safe Home if someone closes the main app (for example from Task Manager)
-- Install-time setup that ties the watchdog to the logged-in account so only that user gets auto-restart
-- Kill/tamper protection: if Safe Home or the watchdog is ended, screen time is cleared and the lock screen requires the adult PIN again
+- Windows watchdog service that restarts Safe Home if it is closed (for example from Task Manager)
+- Installer ties the watchdog to the logged-in account so only that user is auto-restarted
+- If Safe Home or the watchdog is ended while screen time remains, time is cleared and the adult PIN is required again
 
 ### Changed
 
-- Installer now asks for administrator once and installs for the whole PC (Program Files), so the watchdog service can be registered
-- Watchdog relaunches Safe Home within about half a second (no multi-second grace wait)
-- Watchdog service itself restarts after about 1 second if its process is killed
+- Installer asks for administrator once and installs for the whole PC (Program Files), so the watchdog service can be registered
+- Watchdog relaunches Safe Home within about half a second
+- Watchdog service itself restarts after about one second if its process is killed
 
 ## [0.4.0] - 2026-07-26
 
