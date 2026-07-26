@@ -1,146 +1,117 @@
 # Safe Home (Tauri)
 
 A custom replacement for Windows’ built-in Family Safety screen-time lock
-(“Time’s up!”), built with Tauri using the ZeBeyond reference design
-(dark background, grid, green glow, mint/cyan gradient button).
+(“Time’s up!”), built with Tauri. Dark lock screen with the Safe Home logo,
+grid background, and mint/cyan accent controls.
 
-On first launch, an adult must configure a PIN, seconds per math item, and
-other screen-time settings. Alt+F4 and the Start menu are blocked while the
-lock screen is visible.
+On first launch, an adult configures a PIN, reward size, grant minutes, daily
+earn limit, unlock-time text, and Windows autostart. Alt+F4 and the Start menu
+are blocked while the lock screen is visible.
 
-**Language:** The app UI defaults to English. Norwegian can be selected in
-Settings. Release notes and documentation are always written in English.
+**Language:** The app UI is Norwegian. Release notes and this documentation are
+written in English.
 
 ## Features
 
-- **Switch user or shut down PC** — the original button, opens a small menu
-  with “Switch user” (locks the workstation) and “Shut down PC” (powers off
-  the machine immediately).
-- **Get more time** — an adult enters their PIN to grant extra time today.
-- **Drive to earn time** — the device user can play a 3D car game (endless
-  runner built with Three.js) to earn time themselves, with realistic night
-  driving graphics: real car silhouette with glossy paint, windows, front and
-  rear lights (headlights actually light the road), procedural asphalt,
-  guardrails, street lights, trees, gradient sky with stars, shadows, and
-  striped traffic barriers — without asking an adult: drive forward, change
-  lane with the arrow keys (or A/D, or swipe on touch), collect coins, and
-  avoid the red obstacles. Each coin grants seconds (default 20, adjustable),
-  and a streak of 5+ coins without crashing gives +25% bonus, 10+ gives +50%.
-  Crashing costs no earned time — only the streak resets and the car slows
-  briefly. When they feel they’ve earned enough (at least 60 seconds), they
-  tap “Done – use the time”. Daily earn limit: default 90 min/day, changed in
-  settings — 0 means no limit. The game also has math questions, a shop, car
-  upgrades, and multiple maps — see the section below.
-- **Corner box** — when the device is unlocked (via adult PIN or earned time),
-  the window shrinks to a small floating box in the top-right that shows
-  remaining time live. When time runs out, the window grows back to the full
-  lock screen. **Ctrl+Shift+H** (or another shortcut you choose under Settings)
-  shows or hides the box anytime while unlocked. The gear in the box opens
-  settings (PIN-protected).
-- **Settings** — the gear in the top-right is PIN-protected and lets an adult
-  change: PIN, unlock-time text, how many minutes “Get more time” grants, how
-  many seconds each game hit grants, daily earn limit, Windows autostart, and
-  the shortcut to show/hide the time box.
-- **PIN on uninstall** — the NSIS uninstaller requires the same adult PIN as
-  in the app before Safe Home can be removed (automatic updates skip the PIN
-  check).
+- **Switch user or shut down PC** — opens a small menu with “Switch user”
+  (locks the workstation) and “Shut down PC” (powers off immediately).
+- **Get more time** — an adult enters their PIN to grant extra time today
+  (default 30 minutes, adjustable in settings).
+- **Drive to earn time** — the device user plays a 3D endless car runner
+  (Three.js) to earn screen time without asking an adult. Drive forward, change
+  lane (arrow keys / A·D / swipe), collect coins, answer multiplication gates,
+  and avoid traffic. Each coin and correct answer grants screen time scaled by
+  the parent **reward size** setting. A streak of 5+ coins without crashing
+  gives +25% bonus, 10+ gives +50%. Crashing costs no earned time — only the
+  streak resets and the car slows briefly. When they have earned at least
+  60 seconds, they tap **Ferdig – bruk tiden**. Daily earn limit defaults to
+  90 min/day (0 = no limit). See **Car game** below for garage, modes, and
+  upgrades.
+- **Corner box (HUD)** — when unlocked (adult PIN or earned time), the window
+  shrinks to a floating box that shows remaining time live. Drag to move it.
+  When time runs out, the full lock screen returns. **Ctrl+Shift+H** (or
+  another shortcut under Settings → Windows) shows or hides the box while
+  unlocked. The gear opens PIN-protected settings; the play button opens the
+  earn-time game.
+- **Settings** — PIN-protected sidebar with categories:
+  - **Tid og spill** — unlock-time text, grant minutes, reward size
+    (Small↔Large slider that scales all earned screen time), daily earn limit
+  - **PIN-kode** — change the adult PIN
+  - **Windows** — autostart, HUD show/hide hotkey
+  - **App-versjon** — current version, what’s new, update download/install
+- **Automatic updates** — release builds check for a newer signed version about
+  once per day. The lock screen can prompt with release notes; install runs
+  quietly inside the app (PIN required), then restarts.
+- **PIN on uninstall** — the NSIS uninstaller requires the same adult PIN
+  before Safe Home can be removed (automatic updates skip the PIN check).
 - **Watchdog service** — a Windows service restarts Safe Home if the main
   process is closed (for example from Task Manager). Install while logged into
   the account that should be locked; approve the one-time administrator prompt.
   The service is machine-wide, but it only relaunches the lock screen for that
-  designated user.
+  designated user. Ending Safe Home or the watchdog while time remains clears
+  remaining time and requires the adult PIN again.
 
-The default PIN is **1234** — change it in the in-app settings panel anytime.
+On first run there is no default PIN — the setup wizard requires an adult to
+choose one (4–8 digits). In browser preview (`bun run preview`), the simulated
+PIN is **1234**.
 
-## New in the car game: math, shop, upgrades, and maps
+## Car game
 
-The car game has four new systems. Everything is pure frontend (no Rust
-backend changes), and all content is still 100% procedural — no external
-models or texture files.
+### Modes
 
-### Math questions (multiplication)
+Before each run, choose a mode:
 
-Every 7th wave (`QUESTION_EVERY` in `car-runner.js`) becomes a question round
-instead of a normal wave:
+- **Normal** — math gates and traffic; best survival time is tracked.
+- **Fartsbombe** — bomb health drains when you drive slowly and regenerates
+  when you keep speed up; at zero the bomb explodes and the run ends.
 
-- A multiplication question `a × b` is generated where both factors are 1–10
-  (e.g. “3 × 5 = ?”). The question is shown in a banner at the top of the
-  game HUD (`#car-hud-question`) via the `onQuestion` callback.
-- Three sign gates spawn — one per lane — with numbers drawn on
-  `CanvasTexture` (same technique as the asphalt/stripe textures). One sign
-  has the correct answer; the other two have plausible wrong answers
-  (`a·(b±1)`, `(a±1)·b`, `±a`, `±b`, etc. — always unique and positive).
-- Driving through the correct sign: +3 bonus coins and the streak increases,
-  with a green flash on the car. Wrong sign: streak resets and the car slows
-  (same slowdown as obstacles), with a red flash.
-- Sign textures are cached per number to avoid rebuilding textures in long
-  sessions.
+After crash, wrong answer, miss, or bomb, a results screen shows survival time,
+score, coins, and bonus screen time, with **Spill igjen** and **Garasje**.
 
-### Wallet and storage (`src/game/profile.js`)
+### Math questions
 
-- Coins still grant screen time as before, but each coin is also added to a
-  **persistent wallet** used in the shop.
-- The profile is stored in `localStorage` under the key
-  `safe-home-car-profile` (works in both the Tauri webview and browser
-  preview) and contains: `coins`, `upgrades` (level per id), `ownedPaints`,
-  `ownedMaps`, `selectedPaint`, `selectedMap`.
-- API: `loadProfile()`, `saveProfile()`, `addCoins(profile, n)`,
-  `purchase(profile, price)` (deducts the price if affordable, returns
-  true/false). Corrupt/missing storage falls back to the default profile.
+Every 2nd wave is a question round. A multiplication `a × b` (factors 1–10)
+appears on a road plate above the lanes. Answer signs lock to a finish line —
+drive through the correct lane. Correct: bonus coins, streak up, glory effect.
+Wrong or miss: run ends (results screen).
 
-### Shop and garage (`src/game/shop-data.js` + `#shop-panel`)
+### Garage, wallet, and upgrades
 
-A new “Shop and garage” button in the game panel opens a shop with three
-sections (rendered dynamically from `main.js`):
+**Garasje** opens a full-screen 3D garage with a live car preview, lobby music
+(mute/unmute), and a large wallet / earned-time strip (with coin-fly and time
+count-up animations).
 
-- **Upgrades** (level-based):
-  - `turbo` Turbo engine — 3 levels (30/60/100 coins), +10% top speed and
-    acceleration per level.
-  - `magnet` Coin magnet — 2 levels (40/80), pulls coins in the adjacent
-    lane toward the car (level 2 has longer range and stronger pull).
-  - `skjold` Shield — 25 coins, survives one collision without losing the
-    streak (cyan ring around the car while active; consumed and can be
-    bought again).
-- **Paint** — 6 colors: mint (free), red/blue (20), purple (30), white (40),
-  gold (50).
-- **Maps** — 4 with distinct themes: Night City (free, the original look),
-  Desert (75, day/sand/cacti), Winter Road (100, snow/snow trees), Sunset
-  (150, orange-purple sky/palms).
+Coins from runs go into a **persistent wallet** (`localStorage` key
+`safe-home-car-profile`) used in the shop, and still grant screen time as
+usual. The profile stores coins, upgrades, owned cars/paints/maps, selection,
+last mode, and best survival times.
 
-### Map themes
+Shop contents (`src/game/shop-data.js`):
 
-Each map is a `theme` object in `shop-data.js` (sky gradient, fog, ground
-color, lights, star opacity, scenery variant: `tre`/`snøtre`/`kaktus`/`palme`)
-passed to `createCarRunner()`. `DEFAULT_THEME` in `car-runner.js` is Night
-City and should look exactly like the old version. When the player changes
-map/paint/upgrade in the shop, the runner is recreated (`dispose()` +
-`createCarRunner()`) on the next game start — there is no runtime theme
-swap.
+- **Cars** — several body styles with perks (extra turbo, built-in magnet,
+  free shield per run). Standard is free; others cost coins.
+- **Upgrades** — Turbo (3 levels), Coin magnet (2 levels), Shield (one-hit,
+  consumable).
+- **Paint** — mint (free) plus red, blue, purple, white, gold.
+- **Maps** — Night City (free), Desert, Winter Road, Sunset — each with its
+  own sky, fog, ground, and scenery (trees / cacti / palms / snow trees).
 
-### Extended callbacks in `createCarRunner(canvas, options)`
-
-New options: `paint` (hex paint color), `upgrades` (`{turbo, magnet, skjold}`
-levels), `theme` (map object), `onQuestion(questionOrNull)`, `onCoinCollect()`
-(called per coin, including bonus coins), `onShieldUsed()` (shield was
-consumed — `main.js` then resets `upgrades.skjold` in the profile). Existing
-API (`start/stop/pause/resume/dispose/setSecondsPerCoin`,
-`onEarn/onComboBreak/onStatsUpdate`) is unchanged.
-
+Models are procedural Three.js groups in `src/3dassets/models.js` (no external
+GLTF/texture files). Graphics self-tune on slow machines; force low graphics
+with `?lowgfx` in browser preview.
 
 ## Preview without building Rust
 
-The frontend is now ES modules (because of the Three.js import), so you can
-**no longer** double-click `index.html` directly — it must be served over HTTP:
+The frontend uses ES modules, so it must be served over HTTP:
 
 ```bash
 bun run preview
 ```
 
-Then open http://localhost:3456 to test everything — the car game, menu, PIN
-flow, settings, and HUD box — without Rust/Tauri. `main.js` simulates Tauri
-calls locally (PIN is `1234`). In preview, the HUD box is a small fixed box
-in the page corner; in the real app the window itself is ~312×64px and
-transparent around the box.
+Open http://localhost:3456 to try the lock screen, PIN flow, settings, garage,
+game, and HUD without Rust/Tauri. `main.js` simulates Tauri calls (PIN
+`1234`). In preview the HUD is a fixed box in the page corner; in the real app
+the window itself is small and transparent around the box.
 
 ## Prerequisites for the real app
 
@@ -188,7 +159,7 @@ GitHub builds the Windows installer, publishes a Release, and uploads
 4. The workflow bumps the version in `package.json`, `Cargo.toml`, and
    `tauri.conf.json`, moves Unreleased to `## [X.Y.Z]`, creates tag
    `vX.Y.Z`, builds the NSIS installer, and publishes the release with notes
-   from CHANGELOG (also shown in the app under Settings).
+   from CHANGELOG (also shown in the app under Settings → App-versjon).
 
 ### Manual tag
 
@@ -219,7 +190,7 @@ Installed clients check
 about **once per day** (on startup, then every hour if more than 24 hours have
 passed). If a newer signed version exists, the lock screen prompts with what’s
 new and **Update now** / **Not now** (PIN required to install). The same info
-is also under **Settings → App version**. Download and install run inside the
+is also under **Settings → App-versjon**. Download and install run inside the
 app (quiet NSIS — no separate installer wizard), then the app restarts.
 
 - Works only in **release builds** (not `tauri dev`).
@@ -235,9 +206,12 @@ The app stores two small JSON files in:
 
 ```
 %APPDATA%\no.familie.safehome\
-├── config.json   PIN hash, unlock text, minutes/seconds, daily limit
+├── config.json   PIN hash, unlock text, reward scale, grant minutes, daily limit, hotkey, autostart
 └── state.json    remaining time right now + earned today
 ```
+
+Game progress (wallet, cars, paints, maps, upgrades, best times) lives in the
+WebView `localStorage` under `safe-home-car-profile`.
 
 All of this is easiest to set via the in-app settings panel (the gear).
 `config.json` is created automatically with defaults the first time the app
@@ -267,7 +241,8 @@ Safe Home installs a Windows service named **Safe Home Watchdog**
 (`SafeHomeWatchdog`). It runs as LocalSystem and checks about twice per second
 whether the main app is running. If it disappears (for example after Task
 Manager), the service marks a tamper flag and starts Safe Home again in the
-designated user’s session within about half a second.
+designated user’s session within about half a second. The watchdog process
+itself is also restarted quickly if killed.
 
 - **Install while logged into the locked account** (typically the child’s),
   then approve the administrator UAC prompt. The installer records that user’s
@@ -319,29 +294,29 @@ safe-home/
 │   ├── bump-version.mjs
 │   └── extract-changelog.mjs
 ├── src/                   Frontend (HTML/CSS/JS ES modules, no bundler)
-│   ├── index.html          Locked view + HUD view + all panels
+│   ├── index.html         Locked view + HUD + panels + garage shell
 │   ├── styles.css
-│   ├── main.js             App logic (ES module)
-│   ├── game/car-runner.js  3D car game (Three.js endless runner with math,
-│   │                         upgrades, and map themes)
-│   ├── game/profile.js     Wallet + owned items, stored in localStorage
-│   ├── game/shop-data.js   Shop data: upgrades, paints, and map themes
-│   └── vendor/             three.module.min.js + three.core.min.js (offline)
-├── src-tauri/              Rust backend
-│   ├── src/main.rs         Commands, window switching, background thread, auto-update
-│   ├── src/bin/            Windows watchdog service binary
-│   ├── src/watchdog_ctl.rs Pause/resume helpers for the watchdog
+│   ├── main.js            App logic (ES module)
+│   ├── logo.png
+│   ├── 3dassets/
+│   │   └── models.js      Procedural car / traffic / scenery models
+│   ├── game/
+│   │   ├── car-runner.js  3D endless runner (math gates, modes, themes)
+│   │   ├── garage-scene.js Live 3D garage preview
+│   │   ├── garage-icons.js Shop card icons
+│   │   ├── lobby-music.js Garage lobby music
+│   │   ├── profile.js     Wallet + owned items (localStorage)
+│   │   ├── shop-data.js   Cars, upgrades, paints, map themes
+│   │   ├── effects.js     Glory / fail / explosion VFX
+│   │   └── stat-fx.js     Coin-fly and time count-up animations
+│   └── vendor/            three.js + postprocessing (offline)
+├── src-tauri/             Rust backend
+│   ├── src/main.rs        Commands, window switching, timer, auto-update
+│   ├── src/bin/           Windows watchdog service binary
+│   ├── src/watchdog_ctl.rs Pause/resume + tamper helpers
 │   ├── Cargo.toml
-│   ├── tauri.conf.json     Window + updater endpoint
-│   ├── windows/            NSIS hooks, PIN check, watchdog register/unregister
+│   ├── tauri.conf.json    Window + updater endpoint
+│   ├── windows/           NSIS hooks, PIN check, watchdog register/unregister
 │   └── capabilities/
 └── package.json
 ```
-
-## One thing to note
-
-The Rust code was written by hand and could not be compiled in the environment
-where it was created (no `cargo`/Windows target available there), so run
-`bun run dev` and report any compile errors you hit. The frontend
-(HTML/CSS/JS) has been fully tested and verified in the browser — all
-buttons, the game, settings, and HUD transitions work as described.
