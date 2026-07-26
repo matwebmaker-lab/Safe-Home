@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-26
+
 ### Fixed
 
 - Watchdog is fast! And if you kill it, you get penalty and all your time is reset to 0.
