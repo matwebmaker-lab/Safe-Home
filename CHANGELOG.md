@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-26
+
 ### Added
 
 - Large wallet and earned-time strip in the game header and garage top bar
