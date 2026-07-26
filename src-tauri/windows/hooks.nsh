@@ -15,13 +15,23 @@
 
 !macro NSIS_HOOK_POSTINSTALL
   ; Register watchdog for the interactive logon user (child account).
+  ; MAINBINARYNAME is sh-host (lock UI); safe-home.exe is the public launcher.
   StrCpy $R7 "$INSTDIR\register-watchdog.ps1"
   ${If} ${FileExists} "$R7"
     ClearErrors
-    ExecWait '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "$R7" -ExePath "$INSTDIR\${MAINBINARYNAME}.exe" -WatchdogPath "$INSTDIR\safe-home-watchdog.exe"' $R8
+    ExecWait '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "$R7" -ExePath "$INSTDIR\${MAINBINARYNAME}.exe" -WatchdogPath "$INSTDIR\safe-home-watchdog.exe" -LauncherPath "$INSTDIR\safe-home.exe"' $R8
     ${If} ${Errors}
     ${OrIf} $R8 <> 0
       DetailPrint "Warning: Safe Home Watchdog service was not registered (exit $R8)."
+    ${EndIf}
+  ${EndIf}
+
+  ; Point Start Menu / desktop shortcuts at the launcher so the obvious name
+  ; is not the process that stays running in Task Manager.
+  ${If} ${FileExists} "$INSTDIR\safe-home.exe"
+    CreateShortCut "$SMPROGRAMS\Safe Home.lnk" "$INSTDIR\safe-home.exe" "" "$INSTDIR\safe-home.exe" 0
+    ${If} ${FileExists} "$DESKTOP\Safe Home.lnk"
+      CreateShortCut "$DESKTOP\Safe Home.lnk" "$INSTDIR\safe-home.exe" "" "$INSTDIR\safe-home.exe" 0
     ${EndIf}
   ${EndIf}
 !macroend

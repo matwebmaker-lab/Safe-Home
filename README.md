@@ -45,11 +45,13 @@ written in English.
 - **PIN on uninstall** — the NSIS uninstaller requires the same adult PIN
   before Safe Home can be removed (automatic updates skip the PIN check).
 - **Watchdog service** — a Windows service restarts Safe Home if the main
-  process is closed (for example from Task Manager). Install while logged into
-  the account that should be locked; approve the one-time administrator prompt.
-  The service is machine-wide, but it only relaunches the lock screen for that
-  designated user. Ending Safe Home or the watchdog while time remains clears
-  remaining time and requires the adult PIN again.
+  process is closed (for example from Task Manager). It also restores the
+  lock binary from a sealed copy if someone deletes it from Program Files.
+  Install while logged into the account that should be locked; approve the
+  one-time administrator prompt. The service is machine-wide, but it only
+  relaunches the lock screen for that designated user. Ending Safe Home or
+  the watchdog while time remains clears remaining time and requires the
+  adult PIN again.
 
 On first run there is no default PIN — the setup wizard requires an adult to
 choose one (4–8 digits). In browser preview (`bun run preview`), the simulated
@@ -206,16 +208,36 @@ The app stores two small JSON files in:
 
 ```
 %APPDATA%\no.familie.safehome\
-├── config.json   PIN hash, unlock text, reward scale, grant minutes, daily limit, hotkey, autostart
+├── config.json   PIN hash (salted), unlock text, reward scale, grant minutes, daily limit, hotkey, autostart
 └── state.json    remaining time right now + earned today
 ```
+
+The PIN itself is never stored. At install the setup writes a **random 32-byte salt**
+to a **random path under `%ProgramData%`** (opaque folder + file names). Only a
+pointer (`salt_path`) is kept in `%ProgramData%\Safe Home\watchdog.json`. The
+stored value is `SHA-256` over a fixed label, the salt, and the PIN — not a
+source-code salt and not a plain hash of the digits alone.
+
+A durable backup of `config.json` is also kept under ProgramData:
+
+```
+%ProgramData%\Safe Home\
+├── config.pending.json   staging copy written by the app
+└── config.seal           hardened backup (Users can read, not change/delete)
+```
+
+The watchdog copies pending → `config.seal` and tightens the ACL. If someone
+deletes or empties the AppData `config.json` after setup, Safe Home restores
+the PIN and settings from the seal, clears remaining screen time, and shows the
+lock screen so a parent must enter the PIN again — it does **not** reopen the
+first-run setup wizard.
 
 Game progress (wallet, cars, paints, maps, upgrades, best times) lives in the
 WebView `localStorage` under `safe-home-car-profile`.
 
 All of this is easiest to set via the in-app settings panel (the gear).
 `config.json` is created automatically with defaults the first time the app
-runs, and can also be edited by hand if desired.
+runs.
 
 ## PIN on uninstall
 
@@ -231,6 +253,8 @@ the PIN check, so updates work as before.
   skipped.
 - If no PIN is set yet (first-run setup not completed), the app can be
   uninstalled without a PIN.
+- If AppData `config.json` was deleted, the uninstaller still checks the
+  ProgramData seal / pending backup for the PIN hash.
 - This is an extra barrier — a user with administrator rights can still bypass
   it other ways. Give the child a **standard user** account (not
   administrator) for best protection.
@@ -239,20 +263,36 @@ the PIN check, so updates work as before.
 
 Safe Home installs a Windows service named **Safe Home Watchdog**
 (`SafeHomeWatchdog`). It runs as LocalSystem and checks about twice per second
-whether the main app is running. If it disappears (for example after Task
+whether the lock UI process is running. If it disappears (for example after Task
 Manager), the service marks a tamper flag and starts Safe Home again in the
 designated user’s session within about half a second. The watchdog process
 itself is also restarted quickly if killed.
 
+**Binaries**
+
+| File | Role |
+|------|------|
+| `safe-home.exe` | Thin launcher (Start Menu / desktop). Starts the host and exits. |
+| `sh-host.exe` | Real lock UI — this is what the watchdog monitors and relaunches. |
+| `safe-home-watchdog.exe` | Windows service binary |
+
+If `sh-host.exe` or `safe-home.exe` is deleted from Program Files, the service
+copies it back from `%ProgramData%\Safe Home\payload\` (written at install /
+update, ACL’d to SYSTEM + Administrators), marks tamper, and relaunches.
+
 - **Install while logged into the locked account** (typically the child’s),
   then approve the administrator UAC prompt. The installer records that user’s
-  SID in `%ProgramData%\Safe Home\watchdog.json`.
+  SID in `%ProgramData%\Safe Home\watchdog.json`, and creates a per-machine PIN
+  salt at a random path under `%ProgramData%` (pointer stored as `salt_path`).
 - Other Windows accounts on the PC are not auto-locked by the service.
 - Updates and uninstall pause or remove the service so it does not fight
   intentional exits.
-- A child on a standard (non-admin) account generally cannot stop the service.
+- A child on a standard (non-admin) account generally cannot stop the service
+  or wipe the sealed restore copies.
 - If Safe Home **or** the watchdog is killed, remaining screen time is cleared
   and the lock screen requires the adult PIN before the PC can be used again.
+- If AppData settings (`config.json`) are deleted after setup, they are restored
+  from the ProgramData seal and the lock screen requires the adult PIN again.
 - The Windows key (and Ctrl+Esc) are blocked only on the lock screen when
   screen time has run out — not while time remains (idle or HUD).
 
@@ -312,8 +352,8 @@ safe-home/
 │   └── vendor/            three.js + postprocessing (offline)
 ├── src-tauri/             Rust backend
 │   ├── src/main.rs        Commands, window switching, timer, auto-update
-│   ├── src/bin/           Windows watchdog service binary
-│   ├── src/watchdog_ctl.rs Pause/resume + tamper helpers
+│   ├── src/bin/           Watchdog service + thin safe-home.exe launcher
+│   ├── src/watchdog_ctl.rs Pause/resume + tamper + sealed payload helpers
 │   ├── Cargo.toml
 │   ├── tauri.conf.json    Window + updater endpoint
 │   ├── windows/           NSIS hooks, PIN check, watchdog register/unregister

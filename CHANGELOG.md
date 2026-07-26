@@ -7,6 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Watchdog restores Safe Home if someone deletes the program files, then shows
+  the lock screen again
+- Lock screen process name in Task Manager is less obvious (Start Menu still
+  says Safe Home)
+- If AppData settings are deleted after setup, the adult PIN and settings are
+  restored from a hardened backup — the lock screen returns (no first-run
+  wizard for the child)
+- Adult PIN is stored as a salted hash using a per-machine random salt created
+  at install (not a salt in the app source)
+
+### Changed
+
+- Uninstall still asks for the adult PIN even if AppData `config.json` was
+  deleted (checks the ProgramData backup)
+
 ## [0.6.0] - 2026-07-26
 
 ### Fixed

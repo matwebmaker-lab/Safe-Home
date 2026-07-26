@@ -70,6 +70,9 @@ fn migrate_reward_scale(cfg: &mut Config) {
 #[derive(Serialize, Deserialize, Clone)]
 struct Config {
     pin_hash: String,
+    /// True when `pin_hash` was computed with the install-time machine salt.
+    #[serde(default)]
+    pin_salted: bool,
     unlock_time: String,
     grant_minutes: u32,
     /// Beholdt for bakoverkompatibilitet; speiles fra reward_scale.
@@ -101,6 +104,7 @@ impl Default for Config {
         // Tom PIN til førstegangsoppsett er fullført.
         Config {
             pin_hash: String::new(),
+            pin_salted: false,
             unlock_time: "07:00".to_string(),
             grant_minutes: 30,
             seconds_per_hit: 20,
@@ -328,10 +332,159 @@ struct AppState {
     update_status: Mutex<UpdateStatus>,
 }
 
-fn hash_pin(pin: &str) -> String {
+/// Domain separator so the salted digest is not a raw SHA256(salt||pin).
+const PIN_KDF_LABEL: &[u8] = b"safe-home-pin-v1";
+
+fn hash_pin_with_salt(pin: &str, salt: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(PIN_KDF_LABEL);
+    hasher.update(&(salt.len() as u32).to_le_bytes());
+    hasher.update(salt);
+    hasher.update(pin.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+/// Legacy unsalted digest (pre-salt installs). Kept for one-time upgrade on
+/// successful PIN entry after an update that introduced salting.
+fn hash_pin_legacy(pin: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(pin.as_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+fn load_pin_salt() -> Option<Vec<u8>> {
+    #[cfg(windows)]
+    {
+        watchdog_ctl::load_pin_salt_bytes()
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+fn random_hex(byte_count: usize) -> Option<String> {
+    let mut buf = vec![0u8; byte_count];
+    getrandom::getrandom(&mut buf).ok()?;
+    Some(buf.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// Create a machine salt in a random ProgramData path when the installer has
+/// not done so yet (e.g. `tauri dev`). Merges `salt_path` into watchdog.json.
+#[cfg(windows)]
+fn ensure_pin_salt() -> Option<Vec<u8>> {
+    if let Some(existing) = watchdog_ctl::load_pin_salt_bytes() {
+        return Some(existing);
+    }
+
+    let dir_name = random_hex(16)?;
+    let file_name = random_hex(16)?;
+    let program_data = std::env::var_os("PROGRAMDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData"));
+    let salt_dir = program_data.join(dir_name);
+    fs::create_dir_all(&salt_dir).ok()?;
+    let salt_path = salt_dir.join(file_name);
+
+    let mut salt = vec![0u8; 32];
+    getrandom::getrandom(&mut salt).ok()?;
+    fs::write(&salt_path, &salt).ok()?;
+
+    harden_path_acl(
+        &salt_dir,
+        &[
+            "NT AUTHORITY\\SYSTEM:(OI)(CI)F",
+            "BUILTIN\\Administrators:(OI)(CI)F",
+            "BUILTIN\\Users:(X)",
+        ],
+    );
+    harden_path_acl(
+        &salt_path,
+        &[
+            "NT AUTHORITY\\SYSTEM:F",
+            "BUILTIN\\Administrators:F",
+            "BUILTIN\\Users:R",
+        ],
+    );
+
+    merge_salt_path_into_watchdog(&salt_path);
+    Some(salt)
+}
+
+#[cfg(not(windows))]
+fn ensure_pin_salt() -> Option<Vec<u8>> {
+    None
+}
+
+#[cfg(windows)]
+fn harden_path_acl(path: &PathBuf, grants: &[&str]) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let path_str = path.to_string_lossy().replace('/', "\\");
+    let mut args = vec![path_str.clone(), "/inheritance:r".to_string()];
+    for g in grants {
+        args.push("/grant:r".into());
+        args.push((*g).to_string());
+    }
+    let mut cmd = Command::new("icacls.exe");
+    cmd.args(&args)
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    let _ = cmd.status();
+}
+
+#[cfg(windows)]
+fn merge_salt_path_into_watchdog(salt_path: &PathBuf) {
+    let path = watchdog_ctl::watchdog_config_path();
+    let mut value = if let Ok(data) = fs::read_to_string(&path) {
+        serde_json::from_str::<serde_json::Value>(&data).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+    if !value.is_object() {
+        value = serde_json::json!({});
+    }
+    value["salt_path"] = serde_json::json!(salt_path.to_string_lossy());
+    let dir = watchdog_ctl::program_data_dir();
+    let _ = fs::create_dir_all(&dir);
+    let _ = fs::write(
+        &path,
+        serde_json::to_string_pretty(&value).unwrap_or_default(),
+    );
+}
+
+/// Hash a PIN for storage. Prefers install-time salt; creates one if needed.
+fn hash_pin_for_storage(pin: &str) -> (String, bool) {
+    let salt = load_pin_salt().or_else(ensure_pin_salt);
+    match salt {
+        Some(s) => (hash_pin_with_salt(pin, &s), true),
+        None => (hash_pin_legacy(pin), false),
+    }
+}
+
+fn pin_matches(pin: &str, cfg: &Config) -> bool {
+    if cfg.pin_salted {
+        match load_pin_salt() {
+            Some(salt) => hash_pin_with_salt(pin, &salt) == cfg.pin_hash,
+            None => false,
+        }
+    } else {
+        hash_pin_legacy(pin) == cfg.pin_hash
+    }
+}
+
+/// After a correct PIN, upgrade a legacy unsalted hash to the salted form.
+fn upgrade_pin_hash_if_needed(pin: &str, cfg: &mut Config, app: &tauri::AppHandle) {
+    if cfg.pin_salted {
+        return;
+    }
+    let Some(salt) = load_pin_salt().or_else(ensure_pin_salt) else {
+        return;
+    };
+    cfg.pin_hash = hash_pin_with_salt(pin, &salt);
+    cfg.pin_salted = true;
+    save_config(app, cfg);
 }
 
 fn now_secs() -> u64 {
@@ -365,26 +518,98 @@ fn state_path(app: &tauri::AppHandle) -> PathBuf {
     app_data_dir(app).join("state.json")
 }
 
-fn load_config(app: &tauri::AppHandle) -> Config {
-    let path = config_path(app);
-    if let Ok(data) = fs::read_to_string(&path) {
-        if let Ok(mut cfg) = serde_json::from_str::<Config>(&data) {
-            // Eldre filer uten reward_scale: utled fra seconds_per_hit.
-            if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&data) {
-                cfg.reward_scale_set = raw.get("reward_scale").is_some()
-                    || raw.get("rewardScale").is_some();
+/// True when this config has a real adult PIN (setup finished).
+fn config_is_secured(cfg: &Config) -> bool {
+    cfg.configured && !cfg.pin_hash.trim().is_empty()
+}
+
+fn parse_config_bytes(data: &str) -> Option<Config> {
+    let mut cfg = serde_json::from_str::<Config>(data).ok()?;
+    if let Ok(raw) = serde_json::from_str::<serde_json::Value>(data) {
+        cfg.reward_scale_set = raw.get("reward_scale").is_some()
+            || raw.get("rewardScale").is_some();
+    }
+    migrate_reward_scale(&mut cfg);
+    Some(cfg)
+}
+
+fn read_config_file(path: &PathBuf) -> Option<Config> {
+    let data = fs::read_to_string(path).ok()?;
+    parse_config_bytes(&data)
+}
+
+/// Best durable backup: hardened seal first, then the user-writable pending copy.
+fn read_backup_config() -> Option<Config> {
+    #[cfg(windows)]
+    {
+        if let Some(cfg) = read_config_file(&watchdog_ctl::sealed_config_path()) {
+            if config_is_secured(&cfg) {
+                return Some(cfg);
             }
-            migrate_reward_scale(&mut cfg);
-            // Synk Windows-autostart med lagret innstilling
-            let _ = set_windows_autostart(cfg.autostart);
-            return cfg;
+        }
+        if let Some(cfg) = read_config_file(&watchdog_ctl::pending_config_path()) {
+            if config_is_secured(&cfg) {
+                return Some(cfg);
+            }
         }
     }
+    None
+}
+
+fn write_pending_config(cfg: &Config) {
+    #[cfg(windows)]
+    {
+        let dir = watchdog_ctl::program_data_dir();
+        let _ = fs::create_dir_all(&dir);
+        let json = serde_json::to_string_pretty(cfg).unwrap_or_default();
+        let _ = fs::write(watchdog_ctl::pending_config_path(), &json);
+        // Best-effort seal before the watchdog has run. Once the file is ACL’d
+        // to Users:R this write fails and the service updates the seal instead.
+        if fs::write(watchdog_ctl::sealed_config_path(), &json).is_ok() {
+            watchdog_ctl::harden_sealed_config_acl();
+        } else {
+            let _ = watchdog_ctl::sync_sealed_config_from_pending();
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = cfg;
+    }
+}
+
+/// Load adult settings. If AppData was deleted/wiped after setup, restore from
+/// the sealed/pending backup and report `restored = true` so the lock screen
+/// requires the parent PIN again (no first-run wizard for the child).
+fn load_config(app: &tauri::AppHandle) -> (Config, bool) {
+    let path = config_path(app);
+    let disk = read_config_file(&path);
+
+    if let Some(cfg) = disk.as_ref() {
+        if config_is_secured(cfg) {
+            let _ = set_windows_autostart(cfg.autostart);
+            write_pending_config(cfg);
+            return (cfg.clone(), false);
+        }
+    }
+
+    if let Some(backup) = read_backup_config() {
+        // AppData missing, corrupt, or reset to unconfigured — restore + lock.
+        save_config(app, &backup);
+        let _ = set_windows_autostart(backup.autostart);
+        return (backup, true);
+    }
+
+    if let Some(cfg) = disk {
+        // First-run in progress or legacy empty file — keep as-is.
+        let _ = set_windows_autostart(cfg.autostart);
+        return (cfg, false);
+    }
+
     // Første installasjon: start med Windows som standard, allerede før
     // førstegangsveiviseren er fullført.
     let cfg = Config::default();
     let _ = set_windows_autostart(cfg.autostart);
-    cfg
+    (cfg, false)
 }
 
 fn validate_pin(pin: &str) -> Result<(), String> {
@@ -476,6 +701,31 @@ fn save_config(app: &tauri::AppHandle, cfg: &Config) {
         config_path(app),
         serde_json::to_string_pretty(cfg).unwrap_or_default(),
     );
+    if config_is_secured(cfg) {
+        write_pending_config(cfg);
+    }
+}
+
+/// If AppData config was deleted/wiped while we still have a secured PIN in
+/// memory (or a backup), rewrite it and force the lock screen.
+fn ensure_config_integrity(app: &tauri::AppHandle) {
+    let state = app.state::<AppState>();
+    let cfg = state.config.lock().unwrap().clone();
+    if !config_is_secured(&cfg) {
+        return;
+    }
+
+    let path = config_path(app);
+    let disk_ok = read_config_file(&path)
+        .map(|c| config_is_secured(&c))
+        .unwrap_or(false);
+    if disk_ok {
+        return;
+    }
+
+    // Prefer in-memory settings (authoritative while the process is alive).
+    save_config(app, &cfg);
+    force_lock_after_tamper(app);
 }
 
 fn load_runtime_state(app: &tauri::AppHandle) -> RuntimeState {
@@ -1230,7 +1480,9 @@ fn complete_setup(
         return Err("Appen er allerede konfigurert.".into());
     }
     validate_pin(&pin)?;
-    cfg.pin_hash = hash_pin(pin.trim());
+    let (digest, salted) = hash_pin_for_storage(pin.trim());
+    cfg.pin_hash = digest;
+    cfg.pin_salted = salted;
     cfg.unlock_time = unlock_time;
     cfg.grant_minutes = grant_minutes.max(1);
     let scale = reward_scale
@@ -1274,9 +1526,13 @@ fn get_earn_budget(state: State<AppState>) -> serde_json::Value {
 }
 
 #[tauri::command]
-fn verify_pin(pin: String, state: State<AppState>) -> bool {
-    let cfg = state.config.lock().unwrap();
-    hash_pin(&pin) == cfg.pin_hash
+fn verify_pin(pin: String, state: State<AppState>, app: tauri::AppHandle) -> bool {
+    let mut cfg = state.config.lock().unwrap();
+    if !pin_matches(&pin, &cfg) {
+        return false;
+    }
+    upgrade_pin_hash_if_needed(&pin, &mut cfg, &app);
+    true
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1296,14 +1552,17 @@ fn update_settings(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let mut cfg = state.config.lock().unwrap();
-    if hash_pin(&current_pin) != cfg.pin_hash {
+    if !pin_matches(&current_pin, &cfg) {
         return Err("Feil PIN-kode".into());
     }
+    upgrade_pin_hash_if_needed(&current_pin, &mut cfg, &app);
     if let Some(np) = new_pin {
         let trimmed = np.trim();
         if !trimmed.is_empty() {
             validate_pin(trimmed)?;
-            cfg.pin_hash = hash_pin(trimmed);
+            let (digest, salted) = hash_pin_for_storage(trimmed);
+            cfg.pin_hash = digest;
+            cfg.pin_salted = salted;
         }
     }
     let hud_hotkey = normalize_hud_hotkey(hud_hotkey.trim())?;
@@ -1352,8 +1611,12 @@ fn redeem_more_time(
     app: tauri::AppHandle,
 ) -> Result<u32, String> {
     let (ok, minutes) = {
-        let cfg = state.config.lock().unwrap();
-        (hash_pin(&pin) == cfg.pin_hash, cfg.grant_minutes)
+        let mut cfg = state.config.lock().unwrap();
+        let ok = pin_matches(&pin, &cfg);
+        if ok {
+            upgrade_pin_hash_if_needed(&pin, &mut cfg, &app);
+        }
+        (ok, cfg.grant_minutes)
     };
     if !ok {
         return Err("Feil PIN-kode".into());
@@ -1439,9 +1702,9 @@ fn main() {
         }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            let cfg = load_config(app.handle());
+            let (cfg, config_restored) = load_config(app.handle());
             let mut runtime = load_runtime_state(app.handle());
-            let force_lock = should_force_lock_on_startup();
+            let force_lock = should_force_lock_on_startup() || config_restored;
             if force_lock {
                 runtime.unlocked_until = 0;
             }
@@ -1528,6 +1791,8 @@ fn main() {
 
                 #[cfg(windows)]
                 watchdog_ctl::write_heartbeat();
+
+                ensure_config_integrity(&app_handle);
             });
 
             // Daglig oppdateringssjekk fra GitHub Releases (kun i release-bygg).

@@ -1,4 +1,6 @@
-//! Windows service that restarts Safe Home if the main process exits.
+//! Windows service that restarts Safe Home if the host process exits,
+//! and restores `sh-host.exe` / `safe-home.exe` from sealed ProgramData copies
+//! if they were deleted.
 //!
 //! Registered as `SafeHomeWatchdog`. Runs as LocalSystem and launches the
 //! GUI into the designated interactive user session (Session 0 isolation).
@@ -24,6 +26,7 @@ fn main() {
 mod watchdog {
     use serde::Deserialize;
     use std::ffi::OsStr;
+    use std::fs;
     use std::os::windows::ffi::OsStrExt;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -132,18 +135,40 @@ mod watchdog {
                 continue;
             }
 
+            // Keep the hardened PIN/settings seal in sync with the host's pending copy.
+            let _ = watchdog_ctl::sync_sealed_config_from_pending();
+
             let Some(cfg) = load_config() else {
                 continue;
             };
 
             let exe = PathBuf::from(&cfg.exe_path);
-            if !exe.is_file() {
-                continue;
-            }
 
             if is_process_running(&exe) {
                 saw_running = true;
                 launch_backoff_until = None;
+                continue;
+            }
+
+            // Process gone — restore host/launcher from sealed copies if deleted,
+            // then relaunch.
+            match ensure_binaries_present(&exe) {
+                Ok(restored) => {
+                    if restored {
+                        watchdog_ctl::mark_tamper();
+                        log_error(
+                            "Restored Safe Home binary from sealed payload — marking tamper",
+                        );
+                        saw_running = false;
+                    }
+                }
+                Err(e) => {
+                    log_error(&format!("restore failed: {e}"));
+                    continue;
+                }
+            }
+
+            if !exe.is_file() {
                 continue;
             }
 
@@ -191,10 +216,53 @@ mod watchdog {
     }
 
     fn program_data_dir() -> PathBuf {
-        let base = std::env::var_os("PROGRAMDATA")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData"));
-        base.join("Safe Home")
+        watchdog_ctl::program_data_dir()
+    }
+
+    /// Ensure host + Start Menu launcher exist, restoring from sealed copies if deleted.
+    /// Returns Ok(true) when at least one file was restored.
+    fn ensure_binaries_present(host_exe: &Path) -> Result<bool, String> {
+        let mut restored = false;
+
+        match ensure_file_from_seal(host_exe, &watchdog_ctl::sealed_host_path()) {
+            Ok(true) => restored = true,
+            Ok(false) => {}
+            Err(e) => return Err(format!("host: {e}")),
+        }
+
+        let launcher = watchdog_ctl::launcher_path_beside_host(host_exe);
+        // Launcher restore is best-effort — host is enough to keep the lock running.
+        match ensure_file_from_seal(&launcher, &watchdog_ctl::sealed_launcher_path()) {
+            Ok(true) => restored = true,
+            Ok(false) => {}
+            Err(e) => log_error(&format!("launcher restore failed: {e}")),
+        }
+
+        Ok(restored)
+    }
+
+    /// Copy `sealed` → `target` when the install-dir file is missing.
+    /// Returns Ok(true) if a restore write happened.
+    fn ensure_file_from_seal(target: &Path, sealed: &Path) -> Result<bool, String> {
+        if target.is_file() {
+            return Ok(false);
+        }
+        if !sealed.is_file() {
+            return Err(format!("sealed copy missing: {}", sealed.display()));
+        }
+
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("create_dir_all: {e}"))?;
+        }
+
+        let tmp = target.with_extension("exe.restoring");
+        fs::copy(sealed, &tmp).map_err(|e| format!("copy sealed→tmp: {e}"))?;
+        fs::rename(&tmp, target).map_err(|e| {
+            let _ = fs::remove_file(&tmp);
+            format!("rename tmp→target: {e}")
+        })?;
+
+        Ok(true)
     }
 
     fn load_config() -> Option<WatchdogConfig> {
