@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-26
+
 ### Added
 
 - Windows watchdog service that restarts Safe Home if someone closes the main app (for example from Task Manager)
