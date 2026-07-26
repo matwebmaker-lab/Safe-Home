@@ -64,6 +64,10 @@ bun scripts/extract-changelog.mjs 0.2.0
 ## In-app behavior (do not regress)
 
 - App checks for updates about once per day (release builds only).
-- Settings → **App version** shows current version, notes for a newer release,
-  **Update now**, and a download progress bar when the user starts the install.
-- Do not reintroduce silent auto-install on startup; adults confirm in settings.
+- When a newer release is found, the lock screen shows a prompt with version,
+  what’s new (from release notes), and **Update now** / **Not now**.
+- Installing from the prompt requires the adult PIN; download and install run
+  inside the app (quiet NSIS — no separate installer wizard).
+- Settings → **App version** still shows current version, notes, **Update now**,
+  and download progress. A badge on the settings gear marks a pending update.
+- Do not reintroduce silent auto-install on startup; adults must confirm.

@@ -36,5 +36,5 @@ if (!body) {
 
 const header = `Safe Home v${version}\n\n`;
 const footer =
-  "\n\nBrukere med appen installert: åpne Innstillinger → App-versjon for å oppdatere.";
+  "\n\nInstalled users: Safe Home will offer this update in the app (with what’s new). You can also open Settings → App version.";
 process.stdout.write(header + body + footer + "\n");

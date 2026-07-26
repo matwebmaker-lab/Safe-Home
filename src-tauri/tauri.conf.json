@@ -59,7 +59,7 @@
         "https://github.com/matwebmaker-lab/Safe-Home/releases/latest/download/latest.json"
       ],
       "windows": {
-        "installMode": "passive"
+        "installMode": "quiet"
       }
     }
   }

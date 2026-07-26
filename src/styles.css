@@ -298,6 +298,7 @@ body.preview .hud-pill {
 }
 
 .icon-btn {
+  position: relative;
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.14);
   color: var(--text-muted);
@@ -320,6 +321,24 @@ body.preview .hud-pill {
   color: var(--text-primary);
   border-color: rgba(255, 255, 255, 0.32);
   background: rgba(255, 255, 255, 0.05);
+}
+
+.update-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-mint-solid, #3dffb0);
+  box-shadow: 0 0 0 2px rgba(10, 16, 24, 0.9);
+  pointer-events: none;
+}
+
+.update-badge--inline {
+  position: static;
+  margin-left: auto;
+  box-shadow: none;
 }
 
 .dot {
@@ -1313,12 +1332,35 @@ body.setup-mode #btn-settings {
   color: var(--text-primary);
 }
 
+.update-prompt {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.update-prompt .body-text {
+  margin: 0 0 10px;
+}
+
+.update-prompt .settings-version {
+  margin-bottom: 4px;
+}
+
+.update-prompt-pin {
+  margin: 12px 0 4px;
+}
+
+.update-prompt-actions {
+  margin-top: 16px;
+}
+
 .update-notes {
   margin: 12px 0 14px;
   padding: 14px 16px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-md);
+  max-height: min(32vh, 260px);
+  overflow-y: auto;
 }
 
 .settings-notes-title {

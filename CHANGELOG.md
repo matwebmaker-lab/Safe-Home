@@ -11,6 +11,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 - Lobby music in the garage with a mute/unmute button
 - Silver SVG icons on garage shop cards and coin prices
+- Lock-screen prompt when a new version is available, with what’s new and Update now
 
 ### Changed
 
@@ -18,6 +19,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - New app icon on Windows and other platforms
 - Clearer coin display in the garage wallet and buy buttons
 - Richer lighting and atmosphere in the 3D garage preview
+- Updates install quietly inside the app instead of showing the Windows installer UI
 
 ## [0.2.0] - 2026-07-24
 

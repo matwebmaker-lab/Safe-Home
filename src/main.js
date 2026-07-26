@@ -327,12 +327,14 @@ function resetToDefaultActions() {
   $("setup-panel").hidden = true;
   $("shop-panel").hidden = true;
   $("switch-menu").hidden = true;
+  $("update-prompt").hidden = true;
   $("card").classList.remove("game-active");
   $("card").classList.remove("shop-active");
   $("card").classList.remove("settings-active");
   $("card").classList.remove("setup-active");
   document.body.classList.remove("game-immersive", "setup-mode");
   stopGame();
+  syncUpdatePromptVisibility(lastUpdateStatus);
 }
 
 function showSetupWizard(settings) {
@@ -349,6 +351,7 @@ function showSetupWizard(settings) {
   $("settings-gate").hidden = true;
   $("settings-panel").hidden = true;
   $("shop-panel").hidden = true;
+  $("update-prompt").hidden = true;
   $("setup-panel").hidden = false;
   $("card").classList.add("setup-active");
   $("card").classList.remove("game-active", "shop-active", "settings-active");
@@ -466,6 +469,21 @@ async function init() {
     listen("update-progress", (event) => {
       applyUpdateProgress(event.payload);
     });
+  } else if (!settings?.needsSetup) {
+    // Nettleser-forhåndsvisning: simuler at en oppdatering dukker opp.
+    setTimeout(async () => {
+      try {
+        applyUpdateStatus(await invoke("check_for_update"));
+      } catch {
+        /* ignore */
+      }
+    }, 900);
+  }
+
+  try {
+    applyUpdateStatus(await invoke("get_update_status"));
+  } catch {
+    /* ignore */
   }
 }
 init();
@@ -1306,6 +1324,7 @@ async function requestOpenSettings() {
   $("setup-panel").hidden = true;
   $("shop-panel").hidden = true;
   $("switch-menu").hidden = true;
+  $("update-prompt").hidden = true;
   $("card").classList.remove("game-active", "shop-active", "setup-active");
   document.body.classList.remove("game-immersive");
   stopGame();
@@ -1380,7 +1399,8 @@ async function openSettingsPanel() {
   applyHudHotkeyLabel(settings.hudHotkey);
   $("settings-save-error").hidden = true;
   $("settings-save-ok").hidden = true;
-  setSettingsTab("time");
+  const preferAbout = Boolean(lastUpdateStatus?.available || lastUpdateStatus?.installing);
+  setSettingsTab(preferAbout ? "about" : "time");
   settingsPanel.hidden = false;
   $("card").classList.add("settings-active");
   await refreshUpdateStatus();
@@ -1398,25 +1418,229 @@ function formatBytes(n) {
   return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+const UPDATE_DISMISS_KEY = "safehome.dismissedUpdateVersion";
+let lastUpdateStatus = null;
+let updatePromptAwaitingPin = false;
+
+function getDismissedUpdateVersion() {
+  try {
+    return sessionStorage.getItem(UPDATE_DISMISS_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function setDismissedUpdateVersion(version) {
+  try {
+    if (version) sessionStorage.setItem(UPDATE_DISMISS_KEY, version);
+    else sessionStorage.removeItem(UPDATE_DISMISS_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function formatUpdateNotes(notes, version) {
+  let text = String(notes || "").trim();
+  if (!text) return "";
+  text = text.replace(/^Safe Home v[\d.]+\s*/i, "").trim();
+  text = text.replace(
+    /\n*(?:Brukere med appen installert:|Installed users:)[\s\S]*$/i,
+    ""
+  ).trim();
+  if (version) {
+    const esc = version.replace(/\./g, "\\.");
+    text = text.replace(new RegExp(`^##\\s*\\[${esc}\\][^\\n]*\\n*`, "i"), "").trim();
+  }
+  return text;
+}
+
+function setUpdateBadges(visible) {
+  for (const id of [
+    "btn-settings-update-badge",
+    "btn-hud-settings-update-badge",
+    "settings-tab-about-badge",
+  ]) {
+    const el = $(id);
+    if (!el) continue;
+    el.hidden = !visible;
+  }
+  const settingsBtn = $("btn-settings");
+  const hudBtn = $("btn-hud-settings");
+  if (settingsBtn) {
+    settingsBtn.title = visible ? "Innstillinger · ny oppdatering" : "Innstillinger";
+  }
+  if (hudBtn) {
+    hudBtn.title = visible ? "Innstillinger · ny oppdatering" : "Innstillinger";
+  }
+}
+
+function canShowUpdatePrompt() {
+  if (document.body.classList.contains("setup-mode")) return false;
+  if (lockedView.hidden) return false;
+  if (!$("settings-panel").hidden) return false;
+  if (!$("settings-gate").hidden) return false;
+  if (!$("game-panel").hidden) return false;
+  if (!$("shop-panel").hidden) return false;
+  if (!$("pin-panel").hidden) return false;
+  if (!$("granted-panel").hidden) return false;
+  if (!$("setup-panel").hidden) return false;
+  return true;
+}
+
+function fillProgressUI(fillEl, labelEl, downloaded, total, installing) {
+  if (!fillEl || !labelEl) return;
+  if (total && total > 0) {
+    const pct = Math.min(100, Math.round((downloaded / total) * 100));
+    fillEl.style.width = `${pct}%`;
+    if (installing && pct >= 100) {
+      labelEl.textContent = "Installerer oppdateringen i appen…";
+    } else {
+      labelEl.textContent = `Laster ned… ${formatBytes(downloaded)} / ${formatBytes(total)} (${pct} %)`;
+    }
+  } else {
+    fillEl.style.width = "15%";
+    labelEl.textContent = installing
+      ? `Laster ned… ${formatBytes(downloaded)}`
+      : `Laster ned… ${formatBytes(downloaded)}`;
+  }
+}
+
 function applyUpdateProgress(payload) {
   const downloaded = Number(payload?.downloaded) || 0;
   const total = payload?.total == null ? null : Number(payload.total);
-  const progress = $("settings-update-progress");
-  const fill = $("settings-update-progress-fill");
-  const label = $("settings-update-progress-label");
-  progress.hidden = false;
-  if (total && total > 0) {
-    const pct = Math.min(100, Math.round((downloaded / total) * 100));
-    fill.style.width = `${pct}%`;
-    label.textContent = `Laster ned… ${formatBytes(downloaded)} / ${formatBytes(total)} (${pct} %)`;
+  const installing = Boolean(lastUpdateStatus?.installing);
+
+  const settingsProgress = $("settings-update-progress");
+  if (settingsProgress) settingsProgress.hidden = false;
+  fillProgressUI(
+    $("settings-update-progress-fill"),
+    $("settings-update-progress-label"),
+    downloaded,
+    total,
+    installing
+  );
+
+  const promptProgress = $("update-prompt-progress");
+  if (promptProgress && !$("update-prompt").hidden) {
+    promptProgress.hidden = false;
+    fillProgressUI(
+      $("update-prompt-progress-fill"),
+      $("update-prompt-progress-label"),
+      downloaded,
+      total,
+      installing
+    );
+  }
+}
+
+function renderUpdatePromptContent(status) {
+  const version = status.latestVersion || "";
+  const notes = formatUpdateNotes(status.notes, version);
+  $("update-prompt-version").textContent = version
+    ? `Versjon ${version}`
+    : "";
+  $("update-prompt-lead").textContent = status.installing
+    ? "Oppdateringen lastes ned og installeres i Safe Home. Appen starter på nytt når den er ferdig."
+    : "En ny versjon av Safe Home er klar. Vil du oppdatere nå?";
+  $("update-prompt-title").textContent = status.installing
+    ? "Installerer oppdatering…"
+    : "Ny versjon tilgjengelig";
+
+  const notesWrap = $("update-prompt-notes");
+  const notesBody = $("update-prompt-notes-body");
+  if (notes) {
+    notesWrap.hidden = false;
+    notesBody.textContent = notes;
   } else {
-    fill.style.width = "15%";
-    label.textContent = `Laster ned… ${formatBytes(downloaded)}`;
+    notesWrap.hidden = true;
+    notesBody.textContent = "";
+  }
+}
+
+function showUpdatePrompt(status, { requirePin = false } = {}) {
+  renderUpdatePromptContent(status);
+  $("update-prompt").hidden = false;
+  $("actions-default").hidden = true;
+  $("card").classList.remove("settings-active", "game-active", "shop-active", "setup-active");
+
+  const installing = Boolean(status.installing);
+  const pinBlock = $("update-prompt-pin");
+  const actions = $("update-prompt-actions");
+  const errEl = $("update-prompt-error");
+  errEl.hidden = true;
+
+  if (installing) {
+    updatePromptAwaitingPin = false;
+    pinBlock.hidden = true;
+    actions.hidden = true;
+    $("update-prompt-progress").hidden = false;
+    applyUpdateProgress({ downloaded: status.downloaded, total: status.total });
+    return;
+  }
+
+  $("update-prompt-progress").hidden = true;
+  $("update-prompt-progress-fill").style.width = "0%";
+  actions.hidden = false;
+  $("btn-update-later").disabled = false;
+  $("btn-update-now").disabled = Boolean(status.checking);
+  $("btn-update-now").hidden = false;
+
+  updatePromptAwaitingPin = requirePin;
+  pinBlock.hidden = !requirePin;
+  if (requirePin) {
+    $("update-prompt-pin-input").value = "";
+    $("update-prompt-pin-input").focus();
+  }
+}
+
+function hideUpdatePrompt() {
+  updatePromptAwaitingPin = false;
+  $("update-prompt").hidden = true;
+  $("update-prompt-pin").hidden = true;
+  $("update-prompt-error").hidden = true;
+  $("update-prompt-progress").hidden = true;
+  $("update-prompt-actions").hidden = false;
+  if (
+    canShowUpdatePrompt() &&
+    $("settings-gate").hidden &&
+    $("settings-panel").hidden &&
+    $("game-panel").hidden &&
+    $("pin-panel").hidden
+  ) {
+    $("actions-default").hidden = false;
+  }
+}
+
+function syncUpdatePromptVisibility(status) {
+  if (!status) return;
+
+  if (status.installing) {
+    if (canShowUpdatePrompt() || !$("update-prompt").hidden) {
+      showUpdatePrompt(status);
+    }
+    return;
+  }
+
+  const version = status.latestVersion || "";
+  const dismissed = version && getDismissedUpdateVersion() === version;
+  const shouldPrompt =
+    status.available &&
+    version &&
+    !dismissed &&
+    !status.checking &&
+    canShowUpdatePrompt();
+
+  if (shouldPrompt) {
+    showUpdatePrompt(status, { requirePin: updatePromptAwaitingPin });
+  } else if (!$("update-prompt").hidden && !updatePromptAwaitingPin) {
+    hideUpdatePrompt();
   }
 }
 
 function applyUpdateStatus(status) {
   if (!status) return;
+  lastUpdateStatus = status;
+
   const versionEl = $("settings-current-version");
   const statusEl = $("settings-update-status");
   const notesWrap = $("settings-update-notes");
@@ -1448,10 +1672,11 @@ function applyUpdateStatus(status) {
     statusEl.textContent = "Trykk «Se etter oppdatering» for å sjekke.";
   }
 
-  if (status.available && status.notes) {
+  const notes = formatUpdateNotes(status.notes, status.latestVersion);
+  if (status.available && notes) {
     notesWrap.hidden = false;
     notesTitle.textContent = `Hva er nytt i ${status.latestVersion || "ny versjon"}`;
-    notesBody.textContent = String(status.notes).trim();
+    notesBody.textContent = notes;
   } else {
     notesWrap.hidden = true;
     notesBody.textContent = "";
@@ -1460,6 +1685,9 @@ function applyUpdateStatus(status) {
   checkBtn.disabled = Boolean(status.checking || status.installing);
   installBtn.hidden = !status.available;
   installBtn.disabled = Boolean(status.checking || status.installing);
+
+  setUpdateBadges(Boolean(status.available || status.installing));
+  syncUpdatePromptVisibility(status);
 }
 
 async function refreshUpdateStatus() {
@@ -1469,6 +1697,44 @@ async function refreshUpdateStatus() {
   } catch (err) {
     $("settings-current-version").textContent = "Versjon —";
     $("settings-update-status").textContent = String(err);
+  }
+}
+
+async function startInstallUpdate({ fromPrompt = false } = {}) {
+  if (fromPrompt) {
+    showUpdatePrompt({ ...(lastUpdateStatus || {}), installing: true, downloaded: 0, total: null });
+  }
+  $("btn-install-update").disabled = true;
+  $("btn-check-update").disabled = true;
+  applyUpdateProgress({ downloaded: 0, total: null });
+  $("settings-update-status").textContent = "Laster ned og installerer oppdatering…";
+  if (!hasTauri) {
+    window.__mockUpdateProgress = (payload) => applyUpdateProgress(payload);
+  }
+  try {
+    await invoke("install_update");
+    if (!hasTauri) {
+      applyUpdateStatus(await invoke("get_update_status"));
+      $("settings-update-status").textContent =
+        "Oppdatering installert (forhåndsvisning — appen starter ikke på nytt).";
+      hideUpdatePrompt();
+    }
+  } catch (err) {
+    const message = String(err);
+    $("settings-update-status").textContent = message;
+    $("btn-check-update").disabled = false;
+    await refreshUpdateStatus();
+    if (fromPrompt || !$("update-prompt").hidden) {
+      const errEl = $("update-prompt-error");
+      errEl.hidden = false;
+      errEl.textContent = message;
+      updatePromptAwaitingPin = false;
+      if (lastUpdateStatus?.available) {
+        showUpdatePrompt(lastUpdateStatus);
+      }
+    }
+  } finally {
+    if (!hasTauri) delete window.__mockUpdateProgress;
   }
 }
 
@@ -1484,28 +1750,45 @@ $("btn-check-update").addEventListener("click", async () => {
   }
 });
 
-$("btn-install-update").addEventListener("click", async () => {
-  $("btn-install-update").disabled = true;
-  $("btn-check-update").disabled = true;
-  applyUpdateProgress({ downloaded: 0, total: null });
-  $("settings-update-status").textContent = "Laster ned og installerer oppdatering…";
-  if (!hasTauri) {
-    window.__mockUpdateProgress = (payload) => applyUpdateProgress(payload);
-  }
+$("btn-install-update").addEventListener("click", () => {
+  startInstallUpdate({ fromPrompt: false });
+});
+
+$("btn-update-later").addEventListener("click", () => {
+  const version = lastUpdateStatus?.latestVersion;
+  if (version) setDismissedUpdateVersion(version);
+  updatePromptAwaitingPin = false;
+  hideUpdatePrompt();
+});
+
+$("btn-update-now").addEventListener("click", () => {
+  if (!lastUpdateStatus?.available) return;
+  showUpdatePrompt(lastUpdateStatus, { requirePin: true });
+});
+
+async function confirmUpdatePromptPin() {
+  const pin = $("update-prompt-pin-input").value.trim();
+  const errEl = $("update-prompt-error");
+  errEl.hidden = true;
+  if (!pin) return;
   try {
-    await invoke("install_update");
-    if (!hasTauri) {
-      applyUpdateStatus(await invoke("get_update_status"));
-      $("settings-update-status").textContent =
-        "Oppdatering installert (forhåndsvisning — appen starter ikke på nytt).";
-    }
-  } catch (err) {
-    $("settings-update-status").textContent = String(err);
-    $("btn-check-update").disabled = false;
-    await refreshUpdateStatus();
-  } finally {
-    if (!hasTauri) delete window.__mockUpdateProgress;
+    const ok = await invoke("verify_pin", { pin });
+    if (!ok) throw new Error("Feil PIN-kode");
+    updatePromptAwaitingPin = false;
+    await startInstallUpdate({ fromPrompt: true });
+  } catch {
+    errEl.hidden = false;
+    errEl.textContent = "Feil PIN-kode. Prøv igjen.";
+    $("update-prompt-pin-input").value = "";
+    $("update-prompt-pin-input").focus();
   }
+}
+
+$("btn-update-prompt-pin-confirm").addEventListener("click", () => {
+  confirmUpdatePromptPin();
+});
+$("update-prompt-pin-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") confirmUpdatePromptPin();
 });
 
 $("btn-settings-cancel").addEventListener("click", async () => {

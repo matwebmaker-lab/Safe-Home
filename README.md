@@ -212,14 +212,15 @@ already have the app.
 Installed clients check
 `https://github.com/matwebmaker-lab/Safe-Home/releases/latest/download/latest.json`
 about **once per day** (on startup, then every hour if more than 24 hours have
-passed). If a newer signed version exists, it appears under
-**Settings → App version** with the current version, what’s new, and an
-**Update now** button. When an adult starts the update, it downloads with a
-progress indicator, installs (NSIS, passive mode), and the app restarts.
+passed). If a newer signed version exists, the lock screen prompts with what’s
+new and **Update now** / **Not now** (PIN required to install). The same info
+is also under **Settings → App version**. Download and install run inside the
+app (quiet NSIS — no separate installer wizard), then the app restarts.
 
 - Works only in **release builds** (not `tauri dev`).
 - Release notes are taken from `CHANGELOG.md` (the version section) and put in
-  the GitHub Release / updater `notes`, which the app shows in settings.
+  the GitHub Release / updater `notes`, which the app shows in the prompt and
+  in settings.
 - Users with an older install *without* the updater must install once manually
   from GitHub Releases; after that, the rest is automatic.
 
