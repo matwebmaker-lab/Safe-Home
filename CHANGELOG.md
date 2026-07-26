@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Large wallet and earned-time strip in the game header and garage top bar
+- Coin fly-to-wallet and time count-up animations when you earn rewards
+
+### Changed
+
+- Math problems only appear on the road plate above the answer lanes, at a larger size
+
+### Removed
+
+- Duplicate math problem overlay at the top of the game view
+
 ## [0.3.0] - 2026-07-25
 
 ### Added
@@ -14,8 +27,6 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - Lobby music in the garage with a mute/unmute button
 - Silver SVG icons on garage shop cards and coin prices
 - Lock-screen prompt when a new version is available, with what’s new and Update now
-- Large wallet and earned-time strip in the game header and garage top bar
-- Coin fly-to-wallet and time count-up animations when you earn rewards
 
 ### Changed
 
@@ -24,11 +35,6 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - Clearer coin display in the garage wallet and buy buttons
 - Richer lighting and atmosphere in the 3D garage preview
 - Updates install quietly inside the app instead of showing the Windows installer UI
-- Math problems only appear on the road plate above the answer lanes, at a larger size
-
-### Removed
-
-- Duplicate math problem overlay at the top of the game view
 
 ## [0.2.0] - 2026-07-24
 
