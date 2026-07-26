@@ -23,6 +23,8 @@ Set-Content -LiteralPath $pausePath -Value '' -Encoding UTF8
 if (Test-Path -LiteralPath $programData) {
   Remove-Item -LiteralPath (Join-Path $programData 'watchdog.json') -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath (Join-Path $programData 'watchdog.log') -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath (Join-Path $programData 'watchdog.tamper') -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath (Join-Path $programData 'heartbeat') -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $pausePath -Force -ErrorAction SilentlyContinue
   # Remove dir only if empty.
   $left = @(Get-ChildItem -LiteralPath $programData -Force -ErrorAction SilentlyContinue)

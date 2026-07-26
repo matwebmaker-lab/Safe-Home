@@ -264,9 +264,10 @@ the PIN check, so updates work as before.
 ## Watchdog service
 
 Safe Home installs a Windows service named **Safe Home Watchdog**
-(`SafeHomeWatchdog`). It runs as LocalSystem and checks every few seconds
-whether the main app is running. If it is not, and the designated user is
-logged on, the service starts Safe Home again in that user’s session.
+(`SafeHomeWatchdog`). It runs as LocalSystem and checks about twice per second
+whether the main app is running. If it disappears (for example after Task
+Manager), the service marks a tamper flag and starts Safe Home again in the
+designated user’s session within about half a second.
 
 - **Install while logged into the locked account** (typically the child’s),
   then approve the administrator UAC prompt. The installer records that user’s
@@ -275,6 +276,10 @@ logged on, the service starts Safe Home again in that user’s session.
 - Updates and uninstall pause or remove the service so it does not fight
   intentional exits.
 - A child on a standard (non-admin) account generally cannot stop the service.
+- If Safe Home **or** the watchdog is killed, remaining screen time is cleared
+  and the lock screen requires the adult PIN before the PC can be used again.
+- The Windows key (and Ctrl+Esc) are blocked only on the lock screen when
+  screen time has run out — not while time remains (idle or HUD).
 
 ## What this app deliberately does *not* do
 
@@ -287,9 +292,10 @@ the earn-time game, and the HUD box — not a full parental-control platform:
   handles switching between locked and HUD mode itself.
 - It does **not block** Alt+Tab, Task Manager, or other OS-level ways to leave
   the window — ending the process in Task Manager is temporary because the
-  watchdog service starts Safe Home again, but a user with administrator
-  rights can still stop the service. Full kiosk lockdown is outside this
-  project’s scope.
+  watchdog service starts Safe Home again and clears screen time (PIN required).
+  A user with administrator rights can still stop the service, but Safe Home
+  then locks immediately if it is still running. Full kiosk lockdown is outside
+  this project’s scope.
 - The game requires WebGL (WebView2 on Windows 10/11 supports this). If WebGL
   is missing, a clear error is shown instead of the game.
 - Graphics self-tune: if the machine stays under ~24 fps for the first few

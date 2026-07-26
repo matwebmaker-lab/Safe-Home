@@ -16,7 +16,8 @@ use tauri::{
 #[cfg(not(debug_assertions))]
 use tauri_plugin_updater::UpdaterExt;
 
-/// Når true: Windows-tast (Start-meny) blokkeres mens låseskjerm/HUD er synlig.
+/// Når true: Windows-tast (Start-meny) og Ctrl+Esc blokkeres — kun på låseskjermen
+/// (når skjermtiden er brukt opp).
 static BLOCK_WIN_KEY: AtomicBool = AtomicBool::new(true);
 
 /// Når true: HUD-hurtigtasten er midlertidig avregistrert (bruker velger ny kombinasjon).
@@ -491,6 +492,86 @@ fn save_runtime_state(app: &tauri::AppHandle, s: &RuntimeState) {
     );
 }
 
+/// Nullstill skjermtid, lagre, vis låseskjerm og be om PIN (etter kill/tamper).
+fn force_lock_after_tamper(app: &tauri::AppHandle) {
+    let state = app.state::<AppState>();
+    *state.unlocked_until.lock().unwrap() = 0;
+    *state.hud_manual_show.lock().unwrap() = false;
+    *state.hud_manual_hide.lock().unwrap() = false;
+    *state.settings_focus.lock().unwrap() = false;
+    save_runtime_state(app, &snapshot_runtime(app));
+    if let Some(win) = app.get_webview_window("main") {
+        enter_locked_mode(app, &win);
+    }
+    let _ = app.emit("locked", ());
+}
+
+/// True if this start should wipe remaining screen time (watchdog/tamper or unclean exit).
+#[cfg(windows)]
+fn should_force_lock_on_startup() -> bool {
+    let tamper = watchdog_ctl::take_tamper();
+    let unclean = watchdog_ctl::detect_unclean_exit();
+    if tamper || unclean {
+        watchdog_ctl::clear_heartbeat();
+        return true;
+    }
+    false
+}
+
+#[cfg(not(windows))]
+fn should_force_lock_on_startup() -> bool {
+    false
+}
+
+/// Overvåk at watchdog-tjenesten kjører. Hvis noen stopper/dreper den midt i
+/// en økt, nullstill skjermtid og lås — samme konsekvens som å drepe Safe Home.
+#[cfg(windows)]
+fn spawn_watchdog_health_thread(app: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        // La oppstart og evt. service-restart få litt tid først.
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        let mut missing_polls: u32 = 0;
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+
+            if !watchdog_ctl::is_watchdog_configured() {
+                continue;
+            }
+            if watchdog_ctl::is_watchdog_paused() {
+                missing_polls = 0;
+                continue;
+            }
+            if watchdog_ctl::is_watchdog_service_running() {
+                missing_polls = 0;
+                watchdog_ctl::write_heartbeat();
+                continue;
+            }
+
+            // SCM kan restarte tjenesten på ~1s — krev et par poll før vi straffer.
+            missing_polls = missing_polls.saturating_add(1);
+            if missing_polls < 3 {
+                continue;
+            }
+            missing_polls = 0;
+
+            let state = app.state::<AppState>();
+            let until = *state.unlocked_until.lock().unwrap();
+            let already_locked = until == 0 || until <= now_secs();
+            if already_locked && *state.ui_mode.lock().unwrap() == UiMode::Locked {
+                // Already locked with no time — still mark so a later unlock isn't restored oddly.
+                watchdog_ctl::mark_tamper();
+                continue;
+            }
+
+            watchdog_ctl::mark_tamper();
+            force_lock_after_tamper(&app);
+        }
+    });
+}
+
+#[cfg(not(windows))]
+fn spawn_watchdog_health_thread(_app: tauri::AppHandle) {}
+
 /// Bytter vinduet til fullskjerms låseskjerm.
 fn enter_locked_mode(app: &tauri::AppHandle, win: &tauri::WebviewWindow) {
     *app.state::<AppState>().ui_mode.lock().unwrap() = UiMode::Locked;
@@ -544,7 +625,7 @@ fn enter_hud_mode(app: &tauri::AppHandle, win: &tauri::WebviewWindow) {
     let state = app.state::<AppState>();
     let already_hud = *state.ui_mode.lock().unwrap() == UiMode::Hud;
     *state.ui_mode.lock().unwrap() = UiMode::Hud;
-    set_block_win_key(true);
+    set_block_win_key(false);
 
     // Litt større enn selve pillen, så avrundede hjørner har transparent
     // luft rundt (WebView2/DWM tegner ellers en rektangulær «ramme»).
@@ -749,8 +830,8 @@ fn spawn_hud_hotkey_thread(app: tauri::AppHandle) {
 #[cfg(not(windows))]
 fn spawn_hud_hotkey_thread(_app: tauri::AppHandle) {}
 
-/// Windows: lavnivå tastaturhook som stopper Alt+F4 og Start-menyen
-/// (Win-tast) mens appen er synlig.
+/// Windows: lavnivå tastaturhook som alltid stopper Alt+F4, og som blokkerer
+/// Start-menyen (Win-tast / Ctrl+Esc) bare mens låseskjermen er aktiv.
 #[cfg(windows)]
 fn spawn_kiosk_keyboard_hook() {
     std::thread::spawn(|| {
@@ -1359,7 +1440,11 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let cfg = load_config(app.handle());
-            let runtime = load_runtime_state(app.handle());
+            let mut runtime = load_runtime_state(app.handle());
+            let force_lock = should_force_lock_on_startup();
+            if force_lock {
+                runtime.unlocked_until = 0;
+            }
             let today = today_index();
             let (earned_day, earned_minutes) = if runtime.earned_day_index == today {
                 (runtime.earned_day_index, runtime.earned_today_minutes)
@@ -1386,12 +1471,19 @@ fn main() {
                 }),
             });
 
+            if force_lock {
+                save_runtime_state(app.handle(), &snapshot_runtime(app.handle()));
+            }
+
             if let Some(win) = app.get_webview_window("main") {
                 let remaining = runtime.unlocked_until.saturating_sub(now_secs());
                 if remaining > 0 {
                     sync_unlock_window(app.handle(), &win, remaining);
                 } else {
                     enter_locked_mode(app.handle(), &win);
+                    if force_lock {
+                        let _ = app.handle().emit("locked", ());
+                    }
                 }
             }
 
@@ -1399,12 +1491,17 @@ fn main() {
 
             // Watchdog may have been paused for an update — allow respawn again.
             #[cfg(windows)]
-            watchdog_ctl::clear_watchdog_pause();
+            {
+                watchdog_ctl::clear_watchdog_pause();
+                watchdog_ctl::write_heartbeat();
+            }
 
             // Global hurtigtast: vis / skjul tidspilleren (standard Ctrl+Shift+H)
             spawn_hud_hotkey_thread(app.handle().clone());
-            // Blokker Alt+F4 og Start-menyen over låseskjermen
+            // Blokker Alt+F4 alltid; Start-meny bare på låseskjermen
             spawn_kiosk_keyboard_hook();
+            // Hvis watchdog drepes: nullstill tid og lås
+            spawn_watchdog_health_thread(app.handle().clone());
 
             // Bakgrunnstråd: teller ned hvert sekund. HUD vises bare når
             // det er lite tid igjen; ellers er vinduet skjult.
@@ -1428,6 +1525,9 @@ fn main() {
                     let _ = app_handle.emit("locked", ());
                     save_runtime_state(&app_handle, &snapshot_runtime(&app_handle));
                 }
+
+                #[cfg(windows)]
+                watchdog_ctl::write_heartbeat();
             });
 
             // Daglig oppdateringssjekk fra GitHub Releases (kun i release-bygg).

@@ -6,6 +6,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 #[cfg(windows)]
+#[path = "../watchdog_ctl.rs"]
+mod watchdog_ctl;
+
+#[cfg(windows)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     watchdog::run()
 }
@@ -24,7 +28,7 @@ mod watchdog {
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc;
-    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use windows_service::service::{
         ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
         ServiceType,
@@ -52,9 +56,11 @@ mod watchdog {
         PROCESS_INFORMATION, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ, STARTUPINFOW,
     };
 
+    use crate::watchdog_ctl;
+
     const SERVICE_NAME: &str = "SafeHomeWatchdog";
-    const POLL_INTERVAL: Duration = Duration::from_secs(2);
-    const GRACE_AFTER_EXIT: Duration = Duration::from_secs(5);
+    /// Poll often so a Task Manager kill is followed by an almost immediate relaunch.
+    const POLL_INTERVAL: Duration = Duration::from_millis(500);
     const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
     static STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -105,7 +111,10 @@ mod watchdog {
             process_id: None,
         })?;
 
-        let mut missing_since: Option<Instant> = None;
+        // Only treat running→missing as a kill (not first boot before Safe Home starts).
+        let mut saw_running = false;
+        // Avoid hammering CreateProcessAsUser if launch keeps failing.
+        let mut launch_backoff_until: Option<SystemTime> = None;
 
         loop {
             if STOP_REQUESTED.load(Ordering::SeqCst) {
@@ -118,36 +127,53 @@ mod watchdog {
             }
 
             if is_paused() {
-                missing_since = None;
+                saw_running = false;
+                launch_backoff_until = None;
                 continue;
             }
 
             let Some(cfg) = load_config() else {
-                missing_since = None;
                 continue;
             };
 
             let exe = PathBuf::from(&cfg.exe_path);
             if !exe.is_file() {
-                missing_since = None;
                 continue;
             }
 
             if is_process_running(&exe) {
-                missing_since = None;
+                saw_running = true;
+                launch_backoff_until = None;
                 continue;
             }
 
-            let since = missing_since.get_or_insert_with(Instant::now);
-            if since.elapsed() < GRACE_AFTER_EXIT {
-                continue;
+            if let Some(until) = launch_backoff_until {
+                if SystemTime::now() < until {
+                    continue;
+                }
             }
 
-            if let Err(e) = launch_in_user_session(&cfg.target_user_sid, &exe) {
-                log_error(&format!("launch failed: {e}"));
-                *since = Instant::now();
-            } else {
-                missing_since = None;
+            // Process was alive earlier in this service session, then disappeared → kill.
+            // Also catch "both killed, then admin started only the watchdog": heartbeat
+            // is stale while Windows uptime is high.
+            if saw_running || watchdog_ctl::detect_unclean_exit() {
+                watchdog_ctl::mark_tamper();
+                log_error("Safe Home missing unexpectedly — marking tamper and relaunching");
+                saw_running = false;
+            }
+
+            match launch_in_user_session(&cfg.target_user_sid, &exe) {
+                Ok(()) => {
+                    // Give the new process time to show up in the process list
+                    // before we attempt another CreateProcessAsUser.
+                    launch_backoff_until =
+                        Some(SystemTime::now() + Duration::from_secs(3));
+                }
+                Err(e) => {
+                    log_error(&format!("launch failed: {e}"));
+                    launch_backoff_until =
+                        Some(SystemTime::now() + Duration::from_secs(2));
+                }
             }
         }
 

@@ -79,5 +79,6 @@ New-Service -Name $serviceName `
   -StartupType Automatic | Out-Null
 
 & sc.exe description $serviceName "Restarts Safe Home if it is closed unexpectedly." | Out-Null
-& sc.exe failure $serviceName reset= 86400 actions= restart/5000/restart/5000/restart/5000 | Out-Null
+# Restart the watchdog itself quickly if someone kills the service process.
+& sc.exe failure $serviceName reset= 86400 actions= restart/1000/restart/1000/restart/1000 | Out-Null
 Start-Service -Name $serviceName
